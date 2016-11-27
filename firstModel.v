@@ -5,58 +5,61 @@ Require Lists.ListSet.
 Require Import Coq.Relations.Relation_Definitions.
 
 Parameter TransactionRequest : Type.
-Hypothesis Aeq_dec : forall x y : TransactionRequest, {x = y} + {x <> y}.
+Hypothesis TXeq_dec : forall x y : TransactionRequest, {x = y} + {x <> y}.
+
+Definition Billboard := ListSet.set TransactionRequest.
+Definition set_remove := ListSet.set_remove TXeq_dec.
+Definition set_add := ListSet.set_add TXeq_dec.
+Definition set_mem := ListSet.set_mem TXeq_dec.
 
 Parameter PersistentState : Type.
 Parameter startState : PersistentState.
+Parameter law : PersistentState -> TransactionRequest -> PersistentState.
 Definition Trace := list PersistentState.
-Definition Law := PersistentState -> TransactionRequest -> PersistentState.
-
-Parameter contracts : Law.
-
-Definition Billboard := ListSet.set TransactionRequest.
-Definition set_remove := ListSet.set_remove Aeq_dec.
-Definition set_add := ListSet.set_add Aeq_dec.
-Definition set_mem := ListSet.set_mem Aeq_dec.
-
-Definition Strategy := Billboard -> Trace -> TransactionRequest.
-Parameter agents : list Strategy. (* actually, agent_strategies. optional? *)
 
 
-Record Model : Type := mkModel {
+
+
+Record Model : Type := {
   billboard : Billboard;
-  trace : Trace;
-  current : PersistentState; (* only here to avoid dealing with empty lists *)
+  history : Trace;
+  now : PersistentState; (* only here to avoid dealing with empty lists *)
 }.
 
 Definition empty_model := {|
   billboard := ListSet.empty_set TransactionRequest;
-  trace := [];
-  current := startState; 
+  history := [];
+  now := startState;
 |}.
 
-Definition perform_request (m : Model) (req : TransactionRequest) : Model :=
-  {|
-    billboard := set_remove req (billboard m);
-    trace := (current m)::(trace m);
-    current := contracts (current m) req;
-  |}.
+Definition perform_request (m : Model) (request : TransactionRequest) : Model :=
+  let (board, history, now) := m
+  in Build_Model (set_remove request board) (now::history) (law now request).
 
-Definition add_request (m : Model) (req : TransactionRequest) : Model :=
-  {|
-    billboard := set_add req (billboard m);
-    trace := trace m;
-    current := current m
-  |}.
+Definition add_request (m : Model) (request : TransactionRequest) : Model :=
+  let (board, history, now) := m
+  in Build_Model (set_add request board) history now.
 
 Inductive Run : Model -> Type :=
   | empty : Run empty_model
   | tx_publish : forall m, Run m
               -> forall req, Run (add_request m req)
   | tx_perform : forall m, Run m
-              -> forall req, set_mem req (billboard m) = true
-                 -> Run (perform_request m req).
+              -> forall request, set_mem request (billboard m) = true
+                 -> Run (perform_request m request).
 
+
+(*
+Decisions:
+  * keep state and not a list of transactions. The only difference is knowledge about past transactions.
+
+  * Agents strategy -
+    Definition Strategy := Billboard -> Trace -> TransactionRequest.
+    Parameter agents : list Strategy. (* actually, agent_strategies. *)
+
+  * Ideal model: Transactions as (pre-state, post-state) pairs? Perhaps we need separation logic for locality.
+                 Kripke structure, and transaction is (p, q) for some predicates.
+*)
 
 (*
 Not in the model:
