@@ -7,23 +7,22 @@ Require Import Coq.Relations.Relation_Definitions.
 Parameter TransactionRequest : Type.
 Hypothesis TXeq_dec : forall x y : TransactionRequest, {x = y} + {x <> y}.
 
-Definition Billboard := ListSet.set TransactionRequest.
+Parameter PersistentState : Type.
+Parameter startState : PersistentState.
+
+Parameter law : PersistentState -> TransactionRequest -> PersistentState.
+
+Definition set := ListSet.set.
 Definition set_remove := ListSet.set_remove TXeq_dec.
 Definition set_add := ListSet.set_add TXeq_dec.
 Definition set_mem := ListSet.set_mem TXeq_dec.
 
-Parameter PersistentState : Type.
-Parameter startState : PersistentState.
-Parameter law : PersistentState -> TransactionRequest -> PersistentState.
-Definition Trace := list PersistentState.
-
-
 
 
 Record Model : Type := {
-  billboard : Billboard;
-  history : Trace;
-  now : PersistentState; (* only here to avoid dealing with empty lists *)
+  billboard : set TransactionRequest;
+  history : list PersistentState;
+  now : PersistentState;
 }.
 
 Definition empty_model := {|
