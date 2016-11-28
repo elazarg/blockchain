@@ -1,0 +1,21 @@
+
+(*
+Decisions:
+  * keep state and not a list of transactions. The only difference is knowledge about past transactions.
+
+  * Ideal model: Transactions as (pre-state, post-state) pairs? Perhaps we need separation logic for locality.
+                 Kripke structure, and transaction is (p, q) for some predicates.
+*)
+
+(*
+Not in the model:
+* Contracts
+* Structure of a persistent state
+* Money (a property of a contract?)
+* knowledge and belief of agents
+* Miners
+* Gas
+* Cryptography
+* Probabilities
+
+*)
