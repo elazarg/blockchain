@@ -4,49 +4,69 @@ Import ListNotations.
 Require Import Arith.PeanoNat.
 Require Import Relations.Relation_Definitions.
 
-Require Import FSets.FSetWeakList.
+Require Import Arith.PeanoNat.
+Require Import FSets.FMapWeakList.
 
-Module Import Collection := FSetWeakList.Make Nat.
+Module Import Map := FMapWeakList.Make Nat.
 
 Section MachineDef.
 
-Definition TransactionRequest := nat.
 
-Parameter PersistentState : Type.
+Definition AgentIdentity := nat.
+Definition SpecIdentity := nat.
 
-Parameter startState : PersistentState.
+Variable MessageContent : Type.
+Variable LocalPersistentState : Type.
 
-Definition Law := PersistentState -> TransactionRequest -> PersistentState.
-Variable law : Law.
+Definition GlobalPersistentState := SpecIdentity -> LocalPersistentState.
 
+Parameter spec_of : AgentIdentity -> SpecIdentity.
+
+(* spec_of owner -> someother -> transition *)
+Variable law : SpecIdentity -> SpecIdentity -> LocalPersistentState -> LocalPersistentState -> Prop.
+Variable startState : GlobalPersistentState.
+
+Definition Request : Type := LocalPersistentState * LocalPersistentState.
 
 Record Machine : Type := {
-  billboard : Collection.t;
-  history : list PersistentState;
-  now : PersistentState;
+  billboard : Map.t Request;
+  history : list GlobalPersistentState;
+  now : GlobalPersistentState;
 }.
 
-Definition perform_request (m : Machine) (request : TransactionRequest) : Machine :=
-  let (board, history, now) := m
-  in Build_Machine (remove request board) (now::history) (law now request).
-
-Definition add_request (m : Machine) (request : TransactionRequest) : Machine :=
-  let (board, history, now) := m
-  in Build_Machine (add request board) history now.
-
-Definition empty_machine := Build_Machine empty [] startState.
+Definition add_request (owner : AgentIdentity) (request : Request) (m : Machine) : Machine :=
+  Build_Machine (add owner request (billboard m)) (history m) (now m).
 
 
-Variable env : Machine -> TransactionRequest -> Prop.
+Definition Env : Type := Machine -> AgentIdentity -> Request -> Prop.
 
-Inductive machine_step : Machine -> Machine -> Prop :=
-  | move_machine : forall m request, machine_step m (perform_request m request)
-  | move_external : forall m request, env m request
-                 -> Collection.mem request (billboard m) = false
-                 -> machine_step m (add_request m request).
+Inductive machine_step (env : Env) : Machine -> Machine -> Prop :=
+  | move_machine (owner : AgentIdentity) : forall (m1 m2: Machine),
+                   (billboard m2) = remove owner (billboard m1)
+                -> (history m2) = (now m1)::(history m1)
+                -> forall spec, law (spec_of owner) spec (now m1 spec) (now m2 spec)
+                -> machine_step env m1 m2
+  | move_external : forall m owner request, env m owner request
+                 -> mem owner (billboard m) = false
+                 -> machine_step env m (add_request owner request m).
+
+
+Definition Strategy := Machine -> Request.
+
+(* TODO: add state *)
+Definition Agent := Strategy.
+
+Variable (agents : Map.t Agent).
+
+Definition agents_relation (m : Machine) (owner : AgentIdentity) (request : Request) : Prop :=
+  Some request = find owner (map (fun s => s m) agents).
+
+Definition arena_step : Machine -> Machine -> Prop := machine_step agents_relation.
 
 End MachineDef.
 
+
+(* Note: the following allows behaviors that cannot happen in practice *)
 
 Parameter LocalPersistentState : Type.
 Parameter Message : Type.
@@ -61,12 +81,15 @@ Definition LocalTransferMapping := SpecIdentity -> LocalTransferRelation.
 (* TODO: mapping is appendable *)
 (* local_transfer_mapping is a constraint on global_transfer_mapping *)
 
-Definition compatible_transfer_mapping (sp1 sp2 : LocalTransferMapping) :=
-  forall id1 id2 local1 local2,
-  -> sp1 id' local1 local2
-  -> sp2 id' local1 local2.
+(* spec1 belongs to id1, and is compatible with spec2 if for any other identity id2 it cannot perform a transfers
+   that is not allowed by spec2 *)
+Definition compatible_transfer_mapping (id1 : SpecIdentity) (sp1 sp2 : LocalTransferMapping) : Prop :=
+  forall id' local'1 local'2, id' <> id1 
+  -> sp1 id' local'1 local'2
+  -> sp2 id' local'1 local'2.
 
 
+(*
 
 
 
@@ -77,7 +100,7 @@ Definition compatible_transfer_mapping (sp1 sp2 : LocalTransferMapping) :=
 Definition Spec := (Identity -> LocalPersistentState) -> Message -> (LocalPersistentState * (Identity -> list Message)).
 (* The intention is to apply it recursively, and ignore messages where ... *)
 
-Record 
+*)
 
 (* 
 TODO:
