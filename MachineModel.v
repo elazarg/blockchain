@@ -15,6 +15,7 @@ Definition TransactionRequest := nat.
 Parameter PersistentState : Type.
 
 Parameter startState : PersistentState.
+
 Definition Law := PersistentState -> TransactionRequest -> PersistentState.
 Variable law : Law.
 
@@ -46,3 +47,40 @@ Inductive machine_step : Machine -> Machine -> Prop :=
 
 End MachineDef.
 
+
+Parameter LocalPersistentState : Type.
+Parameter Message : Type.
+
+Definition SpecIdentity := nat.
+
+Definition LocalTransferRelation := LocalPersistentState -> LocalPersistentState -> Prop.
+
+Definition LocalStateMapping := SpecIdentity -> LocalPersistentState.
+Definition LocalTransferMapping := SpecIdentity -> LocalTransferRelation.
+
+(* TODO: mapping is appendable *)
+(* local_transfer_mapping is a constraint on global_transfer_mapping *)
+
+Definition compatible_transfer_mapping (sp1 sp2 : LocalTransferMapping) :=
+  forall id1 id2 local1 local2,
+  -> sp1 id' local1 local2
+  -> sp2 id' local1 local2.
+
+
+
+
+
+
+
+
+
+Definition Spec := (Identity -> LocalPersistentState) -> Message -> (LocalPersistentState * (Identity -> list Message)).
+(* The intention is to apply it recursively, and ignore messages where ... *)
+
+Record 
+
+(* 
+TODO:
+1. Add structure to Law
+2. Define games
+*)
