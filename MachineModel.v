@@ -14,8 +14,8 @@ Variable LocalPState : Type.
 Definition GlobalPState := BusinessMap LocalPState.
 
 Section Deal.
-(* TODO: perhaps not a BusinessMap but a RoleMap *)
 (* A deal is a 'lockstep' of group of businesses *)
+(* TODO: perhaps not a BusinessMap but a RoleMap *)
 Definition Deal := BusinessMap (LocalPState * LocalPState).
 (* Policies must be encoded in the local state, so other policies can depend on them *)
 Definition PolicyExtractor := LocalPState -> (Deal -> Prop).
@@ -36,9 +36,6 @@ Inductive step_legal_deal (me : BusinessId) (deal : Deal) : Prop :=
         -> partial_deal = remove me deal
         -> step_legal_deal me deal.
 
-Definition step_consistent_deal (deal : Deal) : Prop :=
-  forall (b : BusinessId), step_legal_deal b deal.
-
 Definition composed_deals (d1 d2 res : Deal) : Prop :=
   let '(a, b1) := unzip_deal d1 in
   let '(b2, c) := unzip_deal d2 in
@@ -48,7 +45,7 @@ Definition composed_deals (d1 d2 res : Deal) : Prop :=
 (* A deal is consistent if it can be seen as a sequence of deals such that
    each deal is step-consistent. (sadly, the second constructor is not uniquely defined) *)
 Inductive consistent_deal (deal : Deal) : Prop :=
-  | consistent_base : step_consistent_deal deal
+  | consistent_base : forall (b : BusinessId), step_legal_deal b deal
                         -> consistent_deal deal
   | consistent_compose (d1 d2 : Deal) : composed_deals d1 d2 deal
                         -> consistent_deal deal.
@@ -67,13 +64,12 @@ Record Machine : Type := {
 }.
 
 (* TODO: add state *)
-Parameter agents : AgentMap (Machine -> Request).
-
-Variable startState : GlobalPState.
+Variable agents : AgentMap (Machine -> Request).
 
 Definition add_request (owner : AgentId) (request : Request) (m : Machine) : Machine :=
   Build_Machine (add owner request (billboard m)) (history m) (now m).
 
+(* Note: `owner` is not really used as a permission mechanism yet *)
 Inductive machine_step : Machine -> Machine -> Prop :=
   | move_machine (owner : AgentId) (m1 m2: Machine) :
                    billboard m2 = remove owner (billboard m1)
@@ -85,4 +81,5 @@ Inductive machine_step : Machine -> Machine -> Prop :=
                  -> mem owner (billboard m1) = false
                  -> machine_step m1 (add_request owner request m1).
 
+Variable startState : GlobalPState.
 End MachineDef.
