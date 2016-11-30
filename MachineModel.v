@@ -20,7 +20,10 @@ Definition Deal := SpecMap (LocalPState * LocalPState).
 (* Policies must be encoded in the local state, so other policies can depend on them *)
 Definition PolicyExtractor := LocalPState -> (Deal -> Prop).
 
-Variable  (allows : PolicyExtractor).
+Definition unzip_deal (deal : Deal) : GlobalPState * GlobalPState :=
+  (map fst deal, map snd deal).
+
+Parameter  (allows : PolicyExtractor).
 
 (* Perhaps we may need to approve only the resulting state *)
 (* The inductive definition is only here to say "legal deals are superset-closed" *)
@@ -46,10 +49,17 @@ Definition composable_deals (d1 d2 : Deal) : Prop :=
   \/ t2 = None.
 
 
+Axiom compose_deals : Deal -> Deal -> option Deal.
+
+
 (* A deal is consistent if it can be seen as a sequence of deals such that
    each deal is step-consistent. *)
-Definition consistent_deal (deal : Deal) : Prop :=
-  .
+Inductive consistent_deal (deal : Deal) : Prop :=
+  | consistent_base : step_consistent_deal deal
+                        -> consistent_deal deal
+  | consistent_compose (d1 d2 : Deal) : Some deal = compose_deals d1 d2
+                        -> consistent_deal deal.
+
 
 End Deal.
 
@@ -75,7 +85,7 @@ Inductive machine_step : Machine -> Machine -> Prop :=
   | move_machine (owner : AgentId) (m1 m2: Machine) :
                    billboard m2 = remove owner (billboard m1)
                 -> history m2 = (now m1)::(history m1)
-                -> forall spec_id, law (spec_of owner) spec_id (now m1 spec) (now m2 spec_id)
+                -> (exists deal, unzip_deal deal = (now m1, now m2) /\ consistent_deal deal)
                 -> machine_step m1 m2
   | move_external (owner : AgentId) (request : Request) (m1 : Machine) :
                     Some request = find owner (map (fun s => s m1) agents)
