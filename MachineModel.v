@@ -20,10 +20,9 @@ Definition Deal := SpecMap (LocalPState * LocalPState).
 (* Policies must be encoded in the local state, so other policies can depend on them *)
 Definition PolicyExtractor := LocalPState -> (Deal -> Prop).
 
-Definition unzip_deal (deal : Deal) : GlobalPState * GlobalPState :=
-  (map fst deal, map snd deal).
+Definition unzip_deal (deal : Deal) := (map fst deal, map snd deal).
 
-Parameter  (allows : PolicyExtractor).
+Parameter (allows : PolicyExtractor).
 
 (* Perhaps we may need to approve only the resulting state *)
 (* The inductive definition is only here to say "legal deals are superset-closed" *)
@@ -49,15 +48,18 @@ Definition composable_deals (d1 d2 : Deal) : Prop :=
   \/ t2 = None.
 
 
-Axiom compose_deals : Deal -> Deal -> option Deal.
+Definition composed_deals (d1 d2 res : Deal) : Prop :=
+  let '(a, b1) := unzip_deal d1 in
+  let '(b2, c) := unzip_deal d2 in
+  forall id a b, MapsTo id b1 a -> MapsTo id b2 b -> a = b.
 
 
 (* A deal is consistent if it can be seen as a sequence of deals such that
-   each deal is step-consistent. *)
+   each deal is step-consistent. (sadly, the second constructor is not uniquely defined) *)
 Inductive consistent_deal (deal : Deal) : Prop :=
   | consistent_base : step_consistent_deal deal
                         -> consistent_deal deal
-  | consistent_compose (d1 d2 : Deal) : Some deal = compose_deals d1 d2
+  | consistent_compose (d1 d2 : Deal) : composed_deals d1 d2 deal
                         -> consistent_deal deal.
 
 
@@ -73,7 +75,7 @@ Record Machine : Type := {
 }.
 
 (* TODO: add state *)
-Variable agents : AgentMap (Machine -> Request).
+Parameter agents : AgentMap (Machine -> Request).
 
 Parameter spec_of : AgentId -> SpecId.
 Variable startState : GlobalPState.
