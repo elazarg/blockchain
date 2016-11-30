@@ -1,16 +1,16 @@
 Require Import Bool List.
 
 Require Import Arith.PeanoNat FSets.FMapWeakList.
+
+Variable LocalPState : Type.
+
 Module Import MapNat := FMapWeakList.Make Nat.
 
 Section MachineDef.
 
-Definition AgentId := nat.
-Definition AgentMap := MapNat.t.
 Definition BusinessId := nat.
 Definition BusinessMap := MapNat.t.
 
-Variable LocalPState : Type.
 Definition GlobalPState := BusinessMap LocalPState.
 
 Section Deal.
@@ -53,33 +53,49 @@ Inductive consistent_deal (deal : Deal) : Prop :=
 
 End Deal.
 
-Definition Request : Type := LocalPState * LocalPState.
-(* business_of owner -> someother -> transitio *)
-Parameter business_of : AgentId -> BusinessId.
-
 Record Machine : Type := {
-  billboard : AgentMap Request;
   history : list GlobalPState;
   now : GlobalPState;
 }.
 
-(* TODO: add state *)
-Variable agents : AgentMap (Machine -> Request).
-
-Definition add_request (owner : AgentId) (request : Request) (m : Machine) : Machine :=
-  Build_Machine (add owner request (billboard m)) (history m) (now m).
-
-(* Note: `owner` is not really used as a permission mechanism yet *)
 Inductive machine_step : Machine -> Machine -> Prop :=
-  | move_machine (owner : AgentId) (m1 m2: Machine) :
-                   billboard m2 = remove owner (billboard m1)
-                -> history m2 = (now m1)::(history m1)
+  | move_machine (m1 m2: Machine) :
+                   history m2 = (now m1)::(history m1)
                 -> (exists deal, unzip_deal deal = (now m1, now m2) /\ consistent_deal deal)
-                -> machine_step m1 m2
-  | move_external (owner : AgentId) (request : Request) (m1 : Machine) :
-                    Some request = find owner (map (fun s => s m1) agents)
-                 -> mem owner (billboard m1) = false
-                 -> machine_step m1 (add_request owner request m1).
+                -> machine_step m1 m2.
 
 Variable startState : GlobalPState.
 End MachineDef.
+
+Section ArenaDef.
+
+Definition AgentId := nat.
+Definition AgentMap := MapNat.t.
+(* business_of owner -> someother -> transitio *)
+
+Definition Request : Type := LocalPState * LocalPState.
+
+
+Parameter business_of : AgentId -> BusinessId.
+
+Record Arena : Type := {
+  billboard : AgentMap Request;
+  machine : Machine;
+}.
+(* TODO: add state *)
+Variable agents_actions : AgentMap (Arena -> Request).
+
+Definition add_request (owner : AgentId) (request : Request) (a : Arena) : Arena :=
+  Build_Arena (add owner request (billboard a)) (machine a).
+
+Inductive arena_step : Arena -> Arena -> Prop :=
+  | exec_request (owner : AgentId) (request : Request) : forall a1 a2,
+                   billboard a2 = remove owner (billboard a1)
+                 -> machine_step (machine a1) (machine a2)
+                 -> arena_step a1 a2
+  | agent_act (owner : AgentId) (request : Request) : forall (a1 : Arena),
+                    Some request = find owner (map (fun s => s a1) agents_actions)
+                 -> mem owner (billboard a1) = false
+                 -> arena_step a1 (add_request owner request a1).
+
+End ArenaDef.
