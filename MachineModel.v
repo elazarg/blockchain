@@ -13,6 +13,7 @@ Definition SpecMap := MapNat.t.
 Variable LocalPState : Type.
 Definition GlobalPState := SpecMap LocalPState.
 
+Section Deal.
 (* TODO: perhaps not a SpecMap but a RoleMap *)
 (* A deal is a 'lockstep' of group of businesses *)
 Definition Deal := SpecMap (LocalPState * LocalPState).
@@ -22,18 +23,35 @@ Definition PolicyExtractor := LocalPState -> (Deal -> Prop).
 Variable  (allows : PolicyExtractor).
 
 (* Perhaps we may need to approve only the resulting state *)
-Inductive legal_deal (me : SpecId) (deal : Deal) : Prop :=
+(* The inductive definition is only here to say "legal deals are superset-closed" *)
+Inductive step_legal_deal (me : SpecId) (deal : Deal) : Prop :=
   | base : forall start finish,
            find me deal = Some (start, finish)
         -> allows start deal
-        -> legal_deal me deal
+        -> step_legal_deal me deal
   | step : forall partial_deal,
-           legal_deal me partial_deal
+           step_legal_deal me partial_deal
         -> partial_deal = remove me deal
-        -> legal_deal me deal.
+        -> step_legal_deal me deal.
 
 Definition step_consistent_deal (deal : Deal) : Prop :=
-  forall (spec_id : SpecId), legal_deal spec_id deal.
+  forall (spec_id : SpecId), step_legal_deal spec_id deal.
+
+Definition composable_deals (d1 d2 : Deal) : Prop :=
+  forall (id : SpecId) start mid finish,
+  let t1 := find id d1 in
+  let t2 := find id d2 in
+  t1 = Some (start, mid) /\ t2 = Some (mid, finish)
+  \/ t1 = None
+  \/ t2 = None.
+
+
+(* A deal is consistent if it can be seen as a sequence of deals such that
+   each deal is step-consistent. *)
+Definition consistent_deal (deal : Deal) : Prop :=
+  .
+
+End Deal.
 
 Definition Request : Type := LocalPState * LocalPState.
 (* spec_of owner -> someother -> transition *)
