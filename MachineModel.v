@@ -85,7 +85,4 @@ Inductive machine_step : Machine -> Machine -> Prop :=
                  -> mem owner (billboard m1) = false
                  -> machine_step m1 (add_request owner request m1).
 
-
-Definition SocialRequirements := BusinessId -> LocalPState -> LocalPState -> Prop.
-
 End MachineDef.
