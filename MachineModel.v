@@ -39,15 +39,6 @@ Inductive step_legal_deal (me : SpecId) (deal : Deal) : Prop :=
 Definition step_consistent_deal (deal : Deal) : Prop :=
   forall (spec_id : SpecId), step_legal_deal spec_id deal.
 
-Definition composable_deals (d1 d2 : Deal) : Prop :=
-  forall (id : SpecId) start mid finish,
-  let t1 := find id d1 in
-  let t2 := find id d2 in
-  t1 = Some (start, mid) /\ t2 = Some (mid, finish)
-  \/ t1 = None
-  \/ t2 = None.
-
-
 Definition composed_deals (d1 d2 res : Deal) : Prop :=
   let '(a, b1) := unzip_deal d1 in
   let '(b2, c) := unzip_deal d2 in
