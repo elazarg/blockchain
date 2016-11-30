@@ -26,15 +26,23 @@ Parameter (allows : PolicyExtractor).
 
 (* Perhaps we may need to approve only the resulting state *)
 (* The inductive definition is only here to say "legal deals are superset-closed" *)
-Inductive step_legal_deal (me : BusinessId) (deal : Deal) : Prop :=
-  | base : forall start finish,
-           find me deal = Some (start, finish)
-        -> allows start deal
-        -> step_legal_deal me deal
-  | step : forall partial_deal,
-           step_legal_deal me partial_deal
-        -> partial_deal = remove me deal
-        -> step_legal_deal me deal.
+Definition step_legal_deal (me : BusinessId) (deal : Deal) : Prop :=
+  exists partial_deal,
+        (forall k v, MapsTo k v partial_deal -> MapsTo k v deal)
+    /\ (exists start finish, MapsTo me (start, finish) partial_deal /\ allows start partial_deal).
+
+Require Import Lists.SetoidList.
+Remark step_legal_relevance : forall me deal,
+  step_legal_deal me deal -> In me deal.
+Proof.
+  unfold step_legal_deal.
+  intros.
+  inversion H as [H0 [H1 [start [finish [H2 H3]]]]].
+  unfold In, Raw.PX.In.
+  exists (start, finish).
+  apply (H1 me (start, finish)).
+  assumption.
+Qed.
 
 Definition composed_deals (d1 d2 res : Deal) : Prop :=
   let '(a, b1) := unzip_deal d1 in
