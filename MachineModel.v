@@ -7,16 +7,16 @@ Section MachineDef.
 
 Definition AgentId := nat.
 Definition AgentMap := MapNat.t.
-Definition SpecId := nat.
-Definition SpecMap := MapNat.t.
+Definition BusinessId := nat.
+Definition BusinessMap := MapNat.t.
 
 Variable LocalPState : Type.
-Definition GlobalPState := SpecMap LocalPState.
+Definition GlobalPState := BusinessMap LocalPState.
 
 Section Deal.
-(* TODO: perhaps not a SpecMap but a RoleMap *)
+(* TODO: perhaps not a BusinessMap but a RoleMap *)
 (* A deal is a 'lockstep' of group of businesses *)
-Definition Deal := SpecMap (LocalPState * LocalPState).
+Definition Deal := BusinessMap (LocalPState * LocalPState).
 (* Policies must be encoded in the local state, so other policies can depend on them *)
 Definition PolicyExtractor := LocalPState -> (Deal -> Prop).
 
@@ -26,7 +26,7 @@ Parameter (allows : PolicyExtractor).
 
 (* Perhaps we may need to approve only the resulting state *)
 (* The inductive definition is only here to say "legal deals are superset-closed" *)
-Inductive step_legal_deal (me : SpecId) (deal : Deal) : Prop :=
+Inductive step_legal_deal (me : BusinessId) (deal : Deal) : Prop :=
   | base : forall start finish,
            find me deal = Some (start, finish)
         -> allows start deal
@@ -37,7 +37,7 @@ Inductive step_legal_deal (me : SpecId) (deal : Deal) : Prop :=
         -> step_legal_deal me deal.
 
 Definition step_consistent_deal (deal : Deal) : Prop :=
-  forall (spec_id : SpecId), step_legal_deal spec_id deal.
+  forall (b : BusinessId), step_legal_deal b deal.
 
 Definition composed_deals (d1 d2 res : Deal) : Prop :=
   let '(a, b1) := unzip_deal d1 in
@@ -57,7 +57,8 @@ Inductive consistent_deal (deal : Deal) : Prop :=
 End Deal.
 
 Definition Request : Type := LocalPState * LocalPState.
-(* spec_of owner -> someother -> transition *)
+(* business_of owner -> someother -> transitio *)
+Parameter business_of : AgentId -> BusinessId.
 
 Record Machine : Type := {
   billboard : AgentMap Request;
@@ -68,7 +69,6 @@ Record Machine : Type := {
 (* TODO: add state *)
 Parameter agents : AgentMap (Machine -> Request).
 
-Parameter spec_of : AgentId -> SpecId.
 Variable startState : GlobalPState.
 
 Definition add_request (owner : AgentId) (request : Request) (m : Machine) : Machine :=
@@ -86,6 +86,6 @@ Inductive machine_step : Machine -> Machine -> Prop :=
                  -> machine_step m1 (add_request owner request m1).
 
 
-Definition SocialRequirements := SpecId -> LocalPState -> LocalPState -> Prop.
+Definition SocialRequirements := BusinessId -> LocalPState -> LocalPState -> Prop.
 
 End MachineDef.
