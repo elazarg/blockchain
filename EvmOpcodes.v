@@ -18,7 +18,7 @@ Inductive op2 : Type :=
   | OP_MOD
   | OP_SMOD
   | OP_EXP
-  | OP_SIGNEXTEND (* 2 *)
+  | OP_SIGNEXTEND
   | OP_LT
   | OP_GT
   | OP_SLT
@@ -35,12 +35,19 @@ Inductive op3 : Type :=
   | OP_MULMOD
 .
 
-Inductive instruction : Type :=
+Inductive so_instruction : Type :=
   | I_STOP
-  | I_OP1 : op1 -> instruction
-  | I_OP2 : op2 -> instruction
-  | I_OP3 : op3 -> instruction
+  | I_OP1 : op1 -> so_instruction
+  | I_OP2 : op2 -> so_instruction
+  | I_OP3 : op3 -> so_instruction
   | I_SHA3
+  | I_POP
+  | I_PUSH : nat (* 1-32 *) -> so_instruction
+  | I_DUP : nat (* 1-16 *) -> so_instruction
+  | I_SWAP : nat (* 1-16 *) -> so_instruction
+.
+Inductive instruction : Type :=
+  | STACK_ONLY : so_instruction -> instruction
 
   | I_ADDRESS
   | I_BALANCE
@@ -62,7 +69,6 @@ Inductive instruction : Type :=
   | I_DIFFICULTY
   | I_GASLIMIT
 
-  | I_POP
   | I_MLOAD
   | I_MSTORE
   | I_MSTORE8
@@ -75,11 +81,8 @@ Inductive instruction : Type :=
 
   | I_MSIZE
   | I_GAS
-  | I_JUMPDEST
+  | I_JUMPDEST (* NO-OP - mark as label *)
 
-  | I_PUSH : nat (* 1-32 *) -> instruction
-  | I_DUP : nat (* 1-16 *) -> instruction
-  | I_SWAP : nat (* 1-16 *) -> instruction
   | I_LOG : nat (* 0-4 *) -> instruction
 
   | I_CREATE
@@ -99,21 +102,48 @@ Module Import MapNat := FMapWeakList.Make Nat.
 
 Definition cell := nat.
 Definition memory := MapNat.t nat.
-Definition code := Vector.t instruction.
-Definition stack := list cell.
+Definition stack_t := list cell.
+
+Variable size : nat.
+Variable code : Vector.t instruction size.
 
 Record state := State {
-  st : stack;
+  stack : stack_t;
   mem  : memory;
   pers : memory;
   pc : nat;
 }.
 
-Definition set_stack (s : state) (st' : stack) : state :=
+Definition set_stack (s : state) (st' : stack_t) : state :=
   State st' (mem s) (pers s) (pc s).
 
+Definition pop (s : state) : option state :=
+  match (stack s) with
+  | _::xs => Some (State xs (mem s) (pers s) (pc s))
+  | _ => None
+  end.
+
+Definition apply_1_1 (f : cell -> cell) (s : stack_t) : option stack_t :=
+  match s with
+  | c1::cs => Some ((f c1)::cs)
+  | _ => None
+  end.
+
+Definition apply_2_1 (f : cell -> cell -> cell) (s : stack_t) : option stack_t :=
+  match s with
+  | c1::c2::cs => Some ((f c1 c2)::cs)
+  | _ => None
+  end.
+
+Definition apply_3_1 (f : cell -> cell -> cell -> cell) (s : stack_t) : option stack_t :=
+  match s with
+  | c1::c2::c3::cs => Some ((f c1 c2 c3)::cs)
+  | _ => None
+  end.
+
+
 Definition set_pc (s : state) (pc' : nat) : state :=
-  State (st s) (mem s) (pers s) pc'.
+  State (stack s) (mem s) (pers s) pc'.
 
 Definition exec_op1 (op : op1) (c : cell) : cell :=
   match op with
@@ -150,13 +180,27 @@ Definition exec_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
   | OP_MULMOD => c1
   end.
 
+Definition next : option state -> option state :=
+  option_map (fun s => (set_pc s (pc s + 1))).
 
-Definition exec_instr (i : instruction) (s : state) : option state  :=
-  match i, s with
-  | I_STOP, _ => None
-  | I_OP1 op, {| st:=(x::xs) |} => Some (set_stack s ((exec_op1 op x)::xs))
-  | I_OP2 op, {| st:=(x::y::xs) |} => Some (set_stack s ((exec_op2 op x y)::xs))
-  | I_OP3 op, {| st:=(x::y::z::xs) |} => Some (set_stack s ((exec_op3 op x y z)::xs))
-  | I_POP,    {| st:=(x::xs) |} => Some (set_stack s xs)
-  | _, _ => None
+Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t  :=
+  match i with
+    | I_STOP => None
+    | I_OP1 op => apply_1_1 (exec_op1 op) s
+    | I_OP2 op => apply_2_1 (exec_op2 op) s
+    | I_OP3 op => apply_3_1 (exec_op3 op) s
+    | I_POP => if s then Some (List.tl s) else None
+    | I_PUSH n => match List.nth_error s n with
+                   | None => None
+                   | Some v => Some (v::s)
+                  end
+    | _ => None
+  end.
+
+  in match i with
+    | I_JUMP | I_JUMPI => 
+    | I_JUMP,   {| stack:=(n::_) |} => Some (set_pc s n)
+    | I_JUMPI,  {| stack:=(n::b::_) |} => if b then Some (set_pc s n) else next s
+    | I_PC,     {| pc:=n |} => next (set_stack s (n::stack s))*)
+    | _ => option_map (fun s => (set_pc s (pc s + 1))) s'
   end.
