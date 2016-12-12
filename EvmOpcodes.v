@@ -42,7 +42,7 @@ Inductive so_instruction : Type :=
   | I_OP3 : op3 -> so_instruction
   | I_SHA3
   | I_POP
-  | I_PUSH : nat (* 1-32 *) -> so_instruction
+  | I_PUSH : list nat (* length 1-32 *) -> so_instruction
   | I_DUP : nat (* 1-16 *) -> so_instruction
   | I_SWAP : nat (* 1-16 *) -> so_instruction
 .
@@ -180,27 +180,33 @@ Definition exec_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
   | OP_MULMOD => c1
   end.
 
-Definition next : option state -> option state :=
-  option_map (fun s => (set_pc s (pc s + 1))).
-
-Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t  :=
+Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
   match i with
     | I_STOP => None
     | I_OP1 op => apply_1_1 (exec_op1 op) s
     | I_OP2 op => apply_2_1 (exec_op2 op) s
     | I_OP3 op => apply_3_1 (exec_op3 op) s
     | I_POP => if s then Some (List.tl s) else None
-    | I_PUSH n => match List.nth_error s n with
+    | I_PUSH xs => Some (xs ++ s)
+    | I_DUP n => match List.nth_error s n with
                    | None => None
                    | Some v => Some (v::s)
                   end
-    | _ => None
+    | I_SWAP n => let depth := firstn n s in
+                  if ltb (length depth) n then None else Some (depth ++ s)
+    | SHA3 => Some s
   end.
 
-  in match i with
-    | I_JUMP | I_JUMPI => 
-    | I_JUMP,   {| stack:=(n::_) |} => Some (set_pc s n)
-    | I_JUMPI,  {| stack:=(n::b::_) |} => if b then Some (set_pc s n) else next s
-    | I_PC,     {| pc:=n |} => next (set_stack s (n::stack s))*)
-    | _ => option_map (fun s => (set_pc s (pc s + 1))) s'
+Definition exec_pc_instr (i : instruction) (pc : nat) (s : stack_t) : option (nat * stack_t) :=
+  match i with
+    | I_JUMP => match s with
+                | to::xs => Some (to, xs) 
+                | _ => None
+                end
+    | I_JUMPI => match s with
+                 | to::cond::xs => if cond then Some (to, xs) else Some (pc + 1, xs)
+                 | _ => None
+                end
+    | I_PC => Some (pc, pc::s)
+    | _ => Some (pc + 1, s)
   end.
