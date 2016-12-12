@@ -40,14 +40,15 @@ Inductive so_instruction : Type :=
   | I_OP1 : op1 -> so_instruction
   | I_OP2 : op2 -> so_instruction
   | I_OP3 : op3 -> so_instruction
-  | I_SHA3
   | I_POP
-  | I_PUSH : nat (* 1-32 *) -> so_instruction
+  | I_PUSH : list nat (* length 1-32 *) -> so_instruction
   | I_DUP : nat (* 1-16 *) -> so_instruction
   | I_SWAP : nat (* 1-16 *) -> so_instruction
 .
+
 Inductive instruction : Type :=
   | STACK_ONLY : so_instruction -> instruction
+  | I_SHA3
 
   | I_ADDRESS
   | I_BALANCE
@@ -114,93 +115,85 @@ Record state := State {
   pc : nat;
 }.
 
-Definition set_stack (s : state) (st' : stack_t) : state :=
-  State st' (mem s) (pers s) (pc s).
-
-Definition pop (s : state) : option state :=
-  match (stack s) with
-  | _::xs => Some (State xs (mem s) (pers s) (pc s))
-  | _ => None
-  end.
 
 Definition apply_1_1 (f : cell -> cell) (s : stack_t) : option stack_t :=
   match s with
-  | c1::cs => Some ((f c1)::cs)
-  | _ => None
+    | c1::cs => Some ((f c1)::cs)
+    | _ => None
   end.
 
 Definition apply_2_1 (f : cell -> cell -> cell) (s : stack_t) : option stack_t :=
   match s with
-  | c1::c2::cs => Some ((f c1 c2)::cs)
-  | _ => None
+    | c1::c2::cs => Some ((f c1 c2)::cs)
+    | _ => None
   end.
 
 Definition apply_3_1 (f : cell -> cell -> cell -> cell) (s : stack_t) : option stack_t :=
   match s with
-  | c1::c2::c3::cs => Some ((f c1 c2 c3)::cs)
-  | _ => None
+    | c1::c2::c3::cs => Some ((f c1 c2 c3)::cs)
+    | _ => None
   end.
-
-
-Definition set_pc (s : state) (pc' : nat) : state :=
-  State (stack s) (mem s) (pers s) pc'.
 
 Definition exec_op1 (op : op1) (c : cell) : cell :=
   match op with
-  | OP_ISZERO => if c then 0 else 1
-  | OP_NOT => if c then 0 else 1
+    | OP_ISZERO => if c then 0 else 1
+    | OP_NOT => if c then 0 else 1
   end.
 
 Definition exec_op2 (op : op2) (c1 c2 : cell) : cell :=
   match op with
-  | OP_ADD => c1 + c2
-  | OP_MUL => c1 * c2
-  | OP_SUB => c1 - c2
-  | OP_DIV => c1 / c2
-  | _ => c1 (*
-  | OP_SDIV
-  | OP_MOD
-  | OP_SMOD
-  | OP_EXP
-  | OP_SIGNEXTEND
-  | OP_LT
-  | OP_GT
-  | OP_SLT
-  | OP_SGT
-  | OP_EQ
-  | OP_AND
-  | OP_OR
-  | OP_XOR
-  | OP_BYTE *)
+    | OP_ADD => c1 + c2
+    | OP_MUL => c1 * c2
+    | OP_SUB => c1 - c2
+    | OP_DIV => c1 / c2
+    | _ => c1 (*
+    | OP_SDIV
+    | OP_MOD
+    | OP_SMOD
+    | OP_EXP
+    | OP_SIGNEXTEND
+    | OP_LT
+    | OP_GT
+    | OP_SLT
+    | OP_SGT
+    | OP_EQ
+    | OP_AND
+    | OP_OR
+    | OP_XOR
+    | OP_BYTE *)
   end.
 
 Definition exec_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
   match op with
-  | OP_ADDMOD => c1
-  | OP_MULMOD => c1
+    | OP_ADDMOD => c1
+    | OP_MULMOD => c1
   end.
 
-Definition next : option state -> option state :=
-  option_map (fun s => (set_pc s (pc s + 1))).
-
-Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t  :=
+Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
   match i with
     | I_STOP => None
     | I_OP1 op => apply_1_1 (exec_op1 op) s
     | I_OP2 op => apply_2_1 (exec_op2 op) s
     | I_OP3 op => apply_3_1 (exec_op3 op) s
     | I_POP => if s then Some (List.tl s) else None
-    | I_PUSH n => match List.nth_error s n with
+    | I_PUSH xs => Some (xs ++ s)
+    | I_DUP n => match List.nth_error s n with
                    | None => None
                    | Some v => Some (v::s)
                   end
-    | _ => None
+    | I_SWAP n => let depth := firstn n s in
+                  if ltb (length depth) n then None else Some (depth ++ s)
   end.
 
-  in match i with
-    | I_JUMP | I_JUMPI => 
-    | I_JUMP,   {| stack:=(n::_) |} => Some (set_pc s n)
-    | I_JUMPI,  {| stack:=(n::b::_) |} => if b then Some (set_pc s n) else next s
-    | I_PC,     {| pc:=n |} => next (set_stack s (n::stack s))*)
-    | _ => option_map (fun s => (set_pc s (pc s + 1))) s'
+Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option nat :=
+  match i with
+    | I_JUMP => match s with
+                  | to::xs => Some to 
+                  | _ => None
+                end
+    | I_JUMPI => match s with
+                   | to::cond::xs => Some (if cond then to else pc + 1)
+                   | _ => None
+                end
+    | _ => Some (pc + 1)
   end.
