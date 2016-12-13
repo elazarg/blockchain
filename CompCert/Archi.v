@@ -19,16 +19,10 @@
 
 Require Import ZArith.
 
-Definition ptr64 := false.
+Definition ptrsize := 256%nat.
 
 Parameter big_endian: bool.
 
-Definition align_int64 := 8%Z.
+Definition align_int64 := 256%Z.
 
-Definition splitlong := true.
-
-Lemma splitlong_ptr32: splitlong = true -> ptr64 = false.
-Proof.
-  unfold splitlong, ptr64; congruence.
-Qed.
-Global Opaque ptr64 big_endian splitlong.
+Global Opaque ptrsize big_endian.
