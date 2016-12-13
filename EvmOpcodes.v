@@ -47,7 +47,7 @@ Inductive so_instruction : Type :=
 .
 
 Inductive instruction : Type :=
-  | STACK_ONLY : so_instruction -> instruction
+  | I_STACK_ONLY : so_instruction -> instruction
   | I_SHA3
 
   | I_ADDRESS
@@ -108,13 +108,6 @@ Definition stack_t := list cell.
 Variable size : nat.
 Variable code : Vector.t instruction size.
 
-Record state := State {
-  stack : stack_t;
-  mem  : memory;
-  pers : memory;
-  pc : nat;
-}.
-
 
 Definition apply_1_1 (f : cell -> cell) (s : stack_t) : option stack_t :=
   match s with
@@ -134,13 +127,13 @@ Definition apply_3_1 (f : cell -> cell -> cell -> cell) (s : stack_t) : option s
     | _ => None
   end.
 
-Definition exec_op1 (op : op1) (c : cell) : cell :=
+Definition eval_op1 (op : op1) (c : cell) : cell :=
   match op with
     | OP_ISZERO => if c then 0 else 1
     | OP_NOT => if c then 0 else 1
   end.
 
-Definition exec_op2 (op : op2) (c1 c2 : cell) : cell :=
+Definition eval_op2 (op : op2) (c1 c2 : cell) : cell :=
   match op with
     | OP_ADD => c1 + c2
     | OP_MUL => c1 * c2
@@ -163,7 +156,7 @@ Definition exec_op2 (op : op2) (c1 c2 : cell) : cell :=
     | OP_BYTE *)
   end.
 
-Definition exec_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
+Definition eval_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
   match op with
     | OP_ADDMOD => c1
     | OP_MULMOD => c1
@@ -172,11 +165,11 @@ Definition exec_op3 (op : op3) (c1 c2 c3 : cell) : cell :=
 Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
   match i with
     | I_STOP => None
-    | I_OP1 op => apply_1_1 (exec_op1 op) s
-    | I_OP2 op => apply_2_1 (exec_op2 op) s
-    | I_OP3 op => apply_3_1 (exec_op3 op) s
+    | I_OP1 op => apply_1_1 (eval_op1 op) s
+    | I_OP2 op => apply_2_1 (eval_op2 op) s
+    | I_OP3 op => apply_3_1 (eval_op3 op) s
     | I_POP => if s then Some (List.tl s) else None
-    | I_PUSH xs => Some (xs ++ s)
+    | I_PUSH xs => if ltb (length (xs ++ s)) 1024 then Some (xs ++ s) else None
     | I_DUP n => match List.nth_error s n with
                    | None => None
                    | Some v => Some (v::s)
@@ -195,5 +188,14 @@ Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option n
                    | to::cond::xs => Some (if cond then to else pc + 1)
                    | _ => None
                 end
+    | I_STACK_ONLY (I_PUSH xs) => Some (pc + 1) (* depends on code address encoding *)
     | _ => Some (pc + 1)
   end.
+
+
+Record state := State {
+  stack : stack_t;
+  mem  : memory;
+  pers : memory;
+  pc : nat;
+}.
