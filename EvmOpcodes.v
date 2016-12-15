@@ -7,6 +7,7 @@ Require Import Bool.
 Require Import List.
 Require Import Nat.
 Require Import EqNat.
+Require Import Arith.
 Require Import Arith.PeanoNat.
 
 
@@ -47,9 +48,11 @@ Inductive so_instruction : Type :=
   | I_OP2 : op2 -> so_instruction
   | I_OP3 : op3 -> so_instruction
   | I_POP
-  | I_PUSH : list nat (* length 1-32 *) -> so_instruction
-  | I_DUP : nat (* 1-16 *) -> so_instruction
-  | I_SWAP : nat (* 1-16 *) -> so_instruction
+  | I_PUSH (items : list nat) : (0 < length items /\ length items <= 32) -> so_instruction
+  | I_DUP (n : nat) : n < 16 -> so_instruction (* n is one less than DUPN *)
+  | I_SWAP1 : so_instruction
+  | I_SWAP2 : so_instruction
+  | I_SWAP3 : so_instruction
 .
 
 Inductive instruction : Type :=
@@ -120,11 +123,11 @@ Proof.
   assumption.
 Qed.
 
-Definition pop (s : stack_t) : option stack_t :=
-  match s with
-    | mkstack (c::cs) p => Some (mkstack cs (stack_pop_le c cs p))
-    | _ => None
-  end.
+Definition pop' (w : word) (ws : list word) (H : length (w :: ws) < 1024) : stack_t :=
+ {|
+   stckval := ws;
+   stcksize := Nat.lt_lt_succ_r (length ws) 1023 (lt_S_n (length ws) 1023 H)
+ |}.
 
 Ltac consume H := 
   simpl;
@@ -209,6 +212,114 @@ Require Import Arith.Compare_dec.
 Definition push (xs : list word) :=
   if length xs <? 1024 then Some xs else None.
 
+
+Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
+  match i, stckval s, stckval s' with
+   | I_STOP, _, _ => False
+   | I_POP   , (_::cs)         , st' => st' = cs
+   | I_POP   , _               , _   => False
+   | I_OP1 op, (c1::cs)        , st' => st' = (eval_op1 op c1)::cs
+   | I_OP1 _ , _               , _   => False
+   | I_OP2 op, (c1::c2::cs)    , st' => st' = (eval_op2 op c1 c2)::cs
+   | I_OP2 _ , _               , _   => False
+   | I_OP3 op, (c1::c2::c3::cs), st' => st' = (eval_op3 op c1 c2 c3)::cs
+   | I_OP3 _ , _               , _   => False
+   | I_PUSH cs P, st, st' => st' = cs ++ st
+   | I_DUP n P, st, (c0::st') =>
+       st' = st
+       /\ List.nth_error st n = Some c0
+   | I_DUP _ _, _, _ => False
+   | I_SWAP1, (x::y::cs), (y'::x'::cs') =>
+       x = x' /\ y = y' /\ cs = cs'
+   | I_SWAP1, _, _ => False
+   | I_SWAP2, (x::c1::y::cs), (y'::c1'::x'::cs') =>
+       x = x' /\ y = y' /\ cs = cs' /\ c1 = c1'
+   | I_SWAP2, _, _ => False
+   | I_SWAP3, (x::c1::c2::y::cs), (y'::c1'::c2'::x'::cs') =>
+       x = x' /\ y = y' /\ cs = cs' /\ c1 = c1' /\ c2 = c2'
+   | I_SWAP3, _, _ => False
+  end.
+
+
+Lemma t : forall i s, (forall s', ~ act i s s')\/(exists s', act i s s').
+Proof.
+  intros.
+  destruct s.
+  destruct i; auto.
+  - destruct stckval0; auto.
+    simpl. right.
+    exists (mkstack ((eval_op1 o w)::stckval0) (stack_app_le1 w stckval0 (eval_op1 o) stcksize0)).
+    reflexivity.
+  - destruct stckval0; auto.
+    destruct stckval0; auto.
+    simpl. right.
+    exists (mkstack ((eval_op2 o w w0)::stckval0) (stack_app_le2 w w0 stckval0 (eval_op2 o) stcksize0)).
+    reflexivity.
+  - destruct stckval0; auto.
+    destruct stckval0; auto.
+    destruct stckval0; auto.
+    simpl. right.
+    exists (mkstack ((eval_op3 o w w0 w1)::stckval0) (stack_app_le3 w w0 w1 stckval0 (eval_op3 o) stcksize0)).
+    reflexivity.
+  - destruct stckval0; auto.
+    right. simpl. exists (pop' w stckval0 stcksize0).
+    reflexivity.
+  - simpl.
+    clear stcksize0.
+    pose (le_lt_dec 1024 (length (items ++ stckval0))).
+    inversion s.
+    + clear s. left. intros. destruct s'. simpl.
+      intro. rewrite <- H0 in *. clear a H0 stckval0 items.
+      apply (le_not_lt 1024 (length stckval1) H).
+      assumption.
+    + clear s. right.
+      exists (mkstack (items ++ stckval0) H).
+      reflexivity.
+  - simpl.
+    clear stcksize0.
+    pose (le_lt_dec (length stckval0) n).
+    inversion s.
+    + left. intros [cs P]. simpl. destruct cs; auto.
+      intro. inversion H0 as [_ N]. 
+      assert (nth_error stckval0 n <> None). intro. rewrite -> H1 in N.  inversion N.
+      apply nth_error_Some in H1.
+      apply (le_not_lt (length stckval0) n). assumption. assumption.
+    + pose (le_lt_dec 1023 (length stckval0)).
+      inversion s0.
+      * left.
+        intro. destruct s'. destruct stckval1; auto. simpl.
+        intros [A B]. rewrite -> A in stcksize0.
+        simpl in stcksize0.
+        apply (le_not_lt 1023 (length stckval0)); auto. 
+          apply Lt.lt_S_n.
+        assumption.
+     * right. clear s.
+       pose (nth_error stckval0 n).
+       assert (forall w, length (w::stckval0) < 1024) by (intros; simpl; apply Lt.lt_n_S; assumption).
+       destruct (nth_error stckval0 n) eqn:Q.
+       ** assert (length (w::stckval0) < 1024) by (simpl; apply Lt.lt_n_S; assumption).
+          exists (mkstack (w::stckval0) (H1 w)).
+          simpl. auto.
+       ** apply nth_error_None in Q.
+          apply (le_not_lt (length stckval0) n Q) in H. inversion H.
+  - destruct stckval0. left; auto.
+    destruct stckval0. simpl; auto.
+    right. simpl. 
+    exists (mkstack (w0 :: w :: stckval0) stcksize0); simpl;  auto.
+  - destruct stckval0. left; auto.
+    destruct stckval0. simpl; auto.
+    destruct stckval0. simpl; auto.
+    right. simpl. 
+    exists (mkstack (w1 :: w0 :: w :: stckval0) stcksize0); simpl;  auto.
+  - destruct stckval0. left; auto.
+    destruct stckval0. simpl; auto.
+    destruct stckval0. simpl; auto.
+    destruct stckval0. simpl; auto.
+    right. simpl. 
+    exists (mkstack (w2 :: w0 :: w1 :: w :: stckval0) stcksize0); simpl;  auto.
+Defined.
+
+
 Theorem coerce (xs : list word) : {1024 <= length xs}+{length xs < 1024}.
 Proof.
   apply le_lt_dec.
@@ -272,33 +383,6 @@ Proof.
   intros.
   apply (Nat.ltb_lt (length l) 1024), H.
 Qed.
-
-
-Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
-  match i, stckval s, stckval s' with
-   | I_STOP, _, _ => False
-   | I_POP   , (_::cs)         , st' => st' = cs
-   | I_POP   , _               , _   => False
-   | I_OP1 op, (c1::cs)        , st' => st' = (eval_op1 op c1)::cs
-   | I_OP1 _ , _               , _   => False
-   | I_OP2 op, (c1::c2::cs)    , st' => st' = (eval_op2 op c1 c2)::cs
-   | I_OP2 _ , _               , _   => False
-   | I_OP3 op, (c1::c2::c3::cs), st' => st' = (eval_op3 op c1 c2 c3)::cs
-   | I_OP3 _ , _               , _   => False
-   | I_PUSH (x::xs), st, st' => st' = (x::xs) ++ st
-   | I_PUSH _      , _ , _   => False
-   | I_DUP (S n), st, (c0::st') =>
-       st' = st
-       /\ List.nth_error st (S n) = Some c0
-   | I_DUP _, _, _ => False
-   | I_SWAP (S n), (c::cs), (c'::cs') =>
-       length (c::cs) > n
-       /\ skipn n cs = skipn n cs'
-       /\ firstn (n-1) cs = firstn (n-1) cs'
-       /\ List.nth_error cs  n = Some c'
-       /\ List.nth_error cs' n = Some c
-   | I_SWAP _, _, _ => False
-  end.
 
 Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
   match i with
