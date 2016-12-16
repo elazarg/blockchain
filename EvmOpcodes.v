@@ -9,6 +9,9 @@ Require Import Nat.
 Require Import EqNat.
 Require Import Arith.
 Require Import Arith.PeanoNat.
+Require Import Arith.Compare_dec.
+Require Import PeanoNat.
+
 
 
 Inductive op1 : Type :=
@@ -114,61 +117,29 @@ Record stack_t: Type := mkstack {
   stcksize: length stckval < 1024
 }.
 
-Lemma stack_pop_le {T: Type}: forall (c : T) cs (H : length (c::cs) < 1024),
-  length cs < 1024.
+Lemma pop_smaller : forall (w : word) ws, length (w :: ws) < 1024 -> length ws < 1024.
 Proof.
   intros.
-  apply Lt.lt_S_n in H.
-  apply Nat.lt_lt_succ_r.
-  assumption.
+  exact (Nat.lt_lt_succ_r (length ws) 1023 (lt_S_n (length ws) 1023 H)).
 Qed.
 
-Definition pop' (w : word) (ws : list word) (H : length (w :: ws) < 1024) : stack_t :=
+Definition pop (w : word) (ws : list word) (H : length (w :: ws) < 1024) : stack_t :=
  {|
    stckval := ws;
-   stcksize := Nat.lt_lt_succ_r (length ws) 1023 (lt_S_n (length ws) 1023 H)
+   stcksize := pop_smaller w ws H;
  |}.
 
-Ltac consume H := 
-  simpl;
-  intros;
-  repeat (assumption || apply Lt.lt_S_n in H; apply Nat.lt_lt_succ_r).
+Definition apply_1_1 (f : word -> word) (w : word) (ws : list word)
+  (H : length (w :: ws) < 1024) : stack_t :=
+  mkstack (f w::ws) H.
 
-Lemma stack_app_le1 {T: Type}: forall (c : T) cs f (H : length (c::cs) < 1024),
-  length ((f c)::cs) < 1024.
-Proof.
-  consume H.
-Qed.
+Definition apply_2_1 (f : word -> word -> word) (w w1 : word) (ws : list word)
+  (H : length (w :: w1 :: ws) < 1024) : stack_t :=
+  apply_1_1 (f w) w1 ws (pop_smaller w (w1::ws) H).
 
-Lemma stack_app_le2 {T: Type}: forall (c1 c2 : T) cs f (H : length (c1::c2::cs) < 1024),
-  length ((f c1 c2)::cs) < 1024.
-Proof.
-  consume H.
-Qed.
-
-Lemma stack_app_le3 {T: Type}: forall (c1 c2 c3: T) cs f (H : length (c1::c2::c3::cs) < 1024),
-  length ((f c1 c2 c3)::cs) < 1024.
-Proof.
-  consume H.
-Qed.
-
-Definition apply_1_1 (f : word -> word) (s : stack_t) : option stack_t :=
-  match s with
-    | mkstack (c1::cs) p => Some (mkstack ((f c1)::cs) (stack_app_le1 c1 cs f p))
-    | _ => None
-  end.
-
-Definition apply_2_1 (f : word -> word -> word) (s : stack_t) : option stack_t :=
-  match s with
-    | mkstack (c1::c2::cs) p => Some (mkstack ((f c1 c2)::cs)  (stack_app_le2 c1 c2 cs f p))
-    | _ => None
-  end.
-
-Definition apply_3_1 (f : word -> word -> word -> word) (s : stack_t) : option stack_t :=
-  match s with
-    | mkstack (c1::c2::c3::cs) p => Some (mkstack ((f c1 c2 c3)::cs)  (stack_app_le3 c1 c2 c3 cs f p))
-    | _ => None
-  end.
+Definition apply_3_1 (f : word -> word -> word -> word) (w w1 w2 : word) (ws : list word)
+  (H : length (w :: w1 :: w2 :: ws) < 1024) : stack_t :=
+  apply_2_1 (f w) w1 w2 ws (pop_smaller w (w1::w2::ws) H).
 
 Definition eval_op1 (op : op1) (c : word) : word :=
   match op with
@@ -204,14 +175,6 @@ Definition eval_op3 (op : op3) (c1 c2 c3 : word) : word :=
     | OP_ADDMOD => c1
     | OP_MULMOD => c1
   end.
-Require Import PeanoNat.
-
-Require Import Arith.Compare_dec.
-
-
-Definition push (xs : list word) :=
-  if length xs <? 1024 then Some xs else None.
-
 
 Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
   match i, stckval s, stckval s' with
@@ -247,22 +210,19 @@ Proof.
   destruct s.
   destruct i; auto.
   - destruct stckval0; auto.
+    right.
+    exists (apply_1_1 (eval_op1 o) w stckval0 stcksize0).
+    reflexivity.
+  - do 2 (destruct stckval0; auto).
     simpl. right.
-    exists (mkstack ((eval_op1 o w)::stckval0) (stack_app_le1 w stckval0 (eval_op1 o) stcksize0)).
+    exists (apply_2_1 (eval_op2 o) w w0 stckval0 stcksize0).
+    reflexivity.
+  - do 3 (destruct stckval0; auto).
+    simpl. right.
+    exists (apply_3_1 (eval_op3 o) w w0 w1 stckval0 stcksize0).
     reflexivity.
   - destruct stckval0; auto.
-    destruct stckval0; auto.
-    simpl. right.
-    exists (mkstack ((eval_op2 o w w0)::stckval0) (stack_app_le2 w w0 stckval0 (eval_op2 o) stcksize0)).
-    reflexivity.
-  - destruct stckval0; auto.
-    destruct stckval0; auto.
-    destruct stckval0; auto.
-    simpl. right.
-    exists (mkstack ((eval_op3 o w w0 w1)::stckval0) (stack_app_le3 w w0 w1 stckval0 (eval_op3 o) stcksize0)).
-    reflexivity.
-  - destruct stckval0; auto.
-    right. simpl. exists (pop' w stckval0 stcksize0).
+    right. simpl. exists (pop w stckval0 stcksize0).
     reflexivity.
   - simpl.
     clear stcksize0.
@@ -303,18 +263,15 @@ Proof.
        ** apply nth_error_None in Q.
           apply (le_not_lt (length stckval0) n Q) in H. inversion H.
   - destruct stckval0. left; auto.
-    destruct stckval0. simpl; auto.
+    do 1 (destruct stckval0; simpl; auto).
     right. simpl. 
     exists (mkstack (w0 :: w :: stckval0) stcksize0); simpl;  auto.
   - destruct stckval0. left; auto.
-    destruct stckval0. simpl; auto.
-    destruct stckval0. simpl; auto.
-    right. simpl. 
+    do 2 (destruct stckval0; simpl; auto).
+    right. simpl.
     exists (mkstack (w1 :: w0 :: w :: stckval0) stcksize0); simpl;  auto.
   - destruct stckval0. left; auto.
-    destruct stckval0. simpl; auto.
-    destruct stckval0. simpl; auto.
-    destruct stckval0. simpl; auto.
+    do 3 (destruct stckval0; simpl; auto).
     right. simpl. 
     exists (mkstack (w2 :: w0 :: w1 :: w :: stckval0) stcksize0); simpl;  auto.
 Defined.
