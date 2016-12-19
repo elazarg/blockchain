@@ -163,73 +163,7 @@ Definition option_mkstack (st : list word) : option stack_t :=
     | left _ => None
   end.
 
-
-Definition swap (n : nat) (ws : list word) : option (list word) :=
-  match firstn n ws, skipn n ws with
-    | x::xs, y::ys => Some ((y::xs) ++ (x::ys))
-    | _, _ => None
-  end.
-
-Lemma swap_same_length : forall n ws v, swap n ws = Some v -> length v = length ws.
-Proof.
-  intros.
-  unfold swap in H.
-  destruct (firstn n ws) eqn:Qf. discriminate H.
-  destruct (skipn n ws) eqn:Qs. discriminate H.
-  rewrite <- (firstn_skipn n ws).
-  rewrite -> Qf, Qs.
-  inversion H.
-  rewrite -> app_comm_cons.
-  repeat rewrite -> app_length.
-  reflexivity.
-Qed.
-
-Lemma swap_lt_1024 : forall n ws v,
-  swap n ws = Some v ->
-  length ws < 1024 ->
-  length v < 1024.
-Proof.
-  intros ? ? ? SWAP H.
-  rewrite (swap_same_length _ _ _ SWAP).
-  apply H.
-Qed.
-
-Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t.
-  refine (match i, s with
-    | I_STOP, _ => None
-    | I_OP1 op, mkstack (w::st) LEN => Some (mkstack (eval_op1 op w::st) LEN)
-    | I_OP1 _, mkstack nil _ => None
-    | I_OP2 op, mkstack (w::w0::st) LEN => Some (mkstack (eval_op2 op w w0::st) (pop_lt LEN))
-    | I_OP2 _, _ => None
-    | I_OP3 op, mkstack (w::w0::w1::st) LEN => Some (mkstack (eval_op3 op w w0 w1::st) (pop_lt (pop_lt LEN)))
-    | I_OP3 _, _ => None
-    | I_POP, mkstack (w::st) LEN => Some (mkstack st (pop_lt LEN))
-    | I_POP, _ => None
-    | I_PUSH items _, mkstack st _  => option_mkstack (items ++ st)
-    | I_DUP n _, mkstack st _  =>
-             match List.nth_error st n with
-               | Some v => option_mkstack (v::st)
-               | None => None
-             end
-    | I_SWAP n _, mkstack ws LEN =>
-             _
-  end).
-rewrite <- (firstn_skipn n ws) in LEN.
-destruct (firstn n ws).
-- apply None.
-- destruct (skipn n ws).
-  * apply None.
-  * refine (Some (mkstack ((w0::l0) ++ (w::l1)) _)).
-    enough  (length ((w0 :: l0) ++ (w :: l1)) = length ((w::l0) ++ (w0::l1))) as ->.
-    + apply LEN.
-    +
-      rewrite -> app_length.
-      rewrite -> app_length.
-      reflexivity.
-Defined.
-Print exec_so_instr.
-
-Lemma swap_same_length' : forall T (w0 w1 : T) l0 l1,
+Lemma swap_same_length : forall T (w0 w1 : T) l0 l1,
   length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
 Proof.
   intros.
@@ -259,28 +193,15 @@ Definition exec_so_instr' (i : so_instruction) (s : stack_t) : option stack_t :=
                | None => None
              end
     | I_SWAP n _, mkstack ws LEN =>
-           let LEN0 := eq_ind_r noflow LEN (firstn_skipn n ws) in
-           match firstn n ws as l1
-           with
-           | nil => fun _ => None
-           | w :: l1 =>
-               match skipn n ws as l3
-               with
-               | nil => fun _ => None
-               | w0 :: l3 =>
-                   fun LEN2 =>
-                   Some
-                     {|
-                     stckval := (w0 :: l1) ++ w :: l3;
-                     stcksize := eq_ind_r inbounds LEN2
-                                   (swap_same_length' word w0 w l1 l3)|}
-               end
-           end LEN0
+             match firstn n ws, skipn n ws with
+               | w0 :: l0, w1 :: l1 => fun LEN2 => Some {|
+                                         stckval := (w1 :: l0) ++ w0 :: l1;
+                                         stcksize := eq_ind_r inbounds LEN2
+                                                       (swap_same_length word w1 w0 l0 l1)
+                                       |}
+               | _, _ => fun _ => None
+             end (eq_ind_r noflow LEN (firstn_skipn n ws))
   end.
-Lemma swap_same_length' : forall n ws,
-  length ws > n ->
-  (exists v, swap n ws = Some v /\ length v = length ws).
-
 
 Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
   match i, stckval s, stckval s' with
