@@ -13,6 +13,9 @@ Require Import Arith.Compare_dec.
 Require Import PeanoNat.
 
 
+Definition byte := nat.
+Definition byte32 := {items : list byte | 0 < length items /\ length items <= 32}.
+Definition word := nat.
 
 Inductive op1 : Type :=
   | OP_ISZERO
@@ -51,9 +54,15 @@ Inductive so_instruction : Type :=
   | I_OP2 : op2 -> so_instruction
   | I_OP3 : op3 -> so_instruction
   | I_POP
-  | I_PUSH (items : list nat) : (0 < length items /\ length items <= 32) -> so_instruction
+  | I_PUSH : byte32 -> so_instruction
   | I_DUP (n : nat) : n < 16 -> so_instruction (* n is one less than DUPN *)
   | I_SWAP (n : nat) : n < 16 -> so_instruction (* n is one less than SWAPN *)
+.
+
+Inductive mem_instruction : Type :=
+  | I_MLOAD
+  | I_MSTORE
+  | I_MSTORE8
 .
 
 Inductive instruction : Type :=
@@ -80,9 +89,7 @@ Inductive instruction : Type :=
   | I_DIFFICULTY
   | I_GASLIMIT
 
-  | I_MLOAD
-  | I_MSTORE
-  | I_MSTORE8
+  | I_MEM_ONLY : mem_instruction -> instruction
   | I_SLOAD
   | I_SSTORE
 
@@ -105,8 +112,6 @@ Inductive instruction : Type :=
 .
 
 
-
-Definition word := nat.
 
 (** The stack is represented as a Coq [list word]
     plus a proof that its lenth is smaller than 1024 *)
@@ -156,6 +161,7 @@ Definition eval_op3 (op : op3) (c1 c2 c3 : word) : word :=
     | OP_MULMOD => c1
   end.
 
+Variable coerce_to_word : byte32 -> word.
 
 Definition option_mkstack (st : list word) : option stack_t :=
   match le_lt_dec 1024 (length st) with
@@ -163,7 +169,7 @@ Definition option_mkstack (st : list word) : option stack_t :=
     | left _ => None
   end.
 
-Lemma swap_same_length : forall T (w0 w1 : T) l0 l1,
+Lemma swap_same_length : forall {T} (w0 w1 : T) l0 l1,
   length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
 Proof.
   intros.
@@ -175,7 +181,23 @@ Qed.
 Definition inbounds n : Prop := n < 1024.
 Definition noflow (xs : list word) : Prop := inbounds (length xs).
 
-Definition exec_so_instr' (i : so_instruction) (s : stack_t) : option stack_t :=
+Definition dup (n : nat) (ws : list word) : option stack_t :=
+   match List.nth_error ws n with
+     | Some v => option_mkstack (v::ws)
+     | None => None
+   end.
+
+(* This is dependently-subtle... *)
+Definition swap (n : nat) (ws : list word) LEN : option stack_t :=
+   match firstn n ws, skipn n ws with
+     | w0::l0, w1::l1 => fun LEN2 => Some {|
+                            stckval := (w1 :: l0) ++ w0 :: l1;
+                            stcksize := eq_ind_r inbounds LEN2 (swap_same_length w1 w0 l0 l1)
+                         |}
+     | _, _ => fun _ => None
+   end (eq_ind_r noflow LEN (firstn_skipn n ws)).
+
+Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
   match i, s with
     | I_STOP, _ => None
     | I_OP1 op, mkstack (w::st) LEN => Some (mkstack (eval_op1 op w::st) LEN)
@@ -186,23 +208,11 @@ Definition exec_so_instr' (i : so_instruction) (s : stack_t) : option stack_t :=
     | I_OP3 _, _ => None
     | I_POP, mkstack (w::st) LEN => Some (mkstack st (pop_lt LEN))
     | I_POP, _ => None
-    | I_PUSH items _, mkstack st _  => option_mkstack (items ++ st)
-    | I_DUP n _, mkstack st _  =>
-             match List.nth_error st n with
-               | Some v => option_mkstack (v::st)
-               | None => None
-             end
-    | I_SWAP n _, mkstack ws LEN =>
-             let LEN_FS := eq_ind_r noflow LEN (firstn_skipn n ws) in
-             match firstn n ws, skipn n ws with
-               | w0::l0, w1::l1 => fun LEN2 => Some {|
-                                      stckval := (w1 :: l0) ++ w0 :: l1;
-                                      stcksize := eq_ind_r inbounds LEN2
-                                                    (swap_same_length word w1 w0 l0 l1)
-                                   |}
-               | _, _ => fun _ => None
-             end LEN_FS
+    | I_PUSH items, mkstack st _  => option_mkstack (coerce_to_word items :: st)
+    | I_DUP n _, mkstack ws _  => dup n ws
+    | I_SWAP n _, mkstack ws LEN => swap n ws LEN
   end.
+
 
 Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option nat :=
   match i with
@@ -214,15 +224,38 @@ Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option n
                    | mkstack (to::cond::xs) _ => Some (if cond then to else pc + 1)
                    | _ => None
                 end
-    | I_STACK_ONLY (I_PUSH _ _) => Some (pc + 1) (* depends on code address encoding *)
+    | I_STACK_ONLY (I_PUSH _) => Some (pc + 1) (* depends on code address encoding *)
     | _ => Some (pc + 1)
   end.
+
 
 Require Import Vector.
 Require Import FSets.FMapWeakList.
 Module Import MapNat := FMapWeakList.Make Nat.
-Definition byte := nat.
-Definition memory := MapNat.t byte.
+Definition memory := MapNat.t word.
+
+Definition stack_read_word (bs : list word) : option word :=
+  if length bs <? 32 then None else coerce_32word_to_word (firstn 32 bs).
+
+Definition exec_mem_instr (i : mem_instruction) (m : memory) (bs : list word) : option (memory * list word) :=
+  match i with
+    | I_MLOAD => match stack_read_word bs with
+                   | Some addr => match find addr m with
+                                    | Some b => Some (m, b::bs)
+                                    | None => None
+                                  end
+                   | None => None
+                 end
+    | I_MSTORE => match stack_read_word bs with
+                   | Some addr => match find addr m with
+                                    | Some b => Some (m, b::bs)
+                                    | None => None
+                                  end
+                   | None => None
+                 end
+    | I_MSTORE8 => None
+  end.
+
 Definition storage := MapNat.t word.
 Variable size : nat.
 Variable code : Vector.t instruction size.
