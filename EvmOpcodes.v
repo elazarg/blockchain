@@ -53,9 +53,7 @@ Inductive so_instruction : Type :=
   | I_POP
   | I_PUSH (items : list nat) : (0 < length items /\ length items <= 32) -> so_instruction
   | I_DUP (n : nat) : n < 16 -> so_instruction (* n is one less than DUPN *)
-  | I_SWAP1 : so_instruction
-  | I_SWAP2 : so_instruction
-  | I_SWAP3 : so_instruction
+  | I_SWAP (n : nat) : n < 16 -> so_instruction (* n is one less than SWAPN *)
 .
 
 Inductive instruction : Type :=
@@ -117,29 +115,11 @@ Record stack_t: Type := mkstack {
   stcksize: length stckval < 1024
 }.
 
-Lemma pop_smaller : forall (w : word) ws, length (w :: ws) < 1024 -> length ws < 1024.
+Lemma pop_lt : forall {w : word} {ws: list word}, length (w :: ws) < 1024 -> length ws < 1024.
 Proof.
   intros.
   exact (Nat.lt_lt_succ_r (length ws) 1023 (lt_S_n (length ws) 1023 H)).
 Qed.
-
-Definition pop (w : word) (ws : list word) (H : length (w :: ws) < 1024) : stack_t :=
- {|
-   stckval := ws;
-   stcksize := pop_smaller w ws H;
- |}.
-
-Definition apply_1_1 (f : word -> word) (w : word) (ws : list word)
-  (H : length (w :: ws) < 1024) : stack_t :=
-  mkstack (f w::ws) H.
-
-Definition apply_2_1 (f : word -> word -> word) (w w1 : word) (ws : list word)
-  (H : length (w :: w1 :: ws) < 1024) : stack_t :=
-  apply_1_1 (f w) w1 ws (pop_smaller w (w1::ws) H).
-
-Definition apply_3_1 (f : word -> word -> word -> word) (w w1 w2 : word) (ws : list word)
-  (H : length (w :: w1 :: w2 :: ws) < 1024) : stack_t :=
-  apply_2_1 (f w) w1 w2 ws (pop_smaller w (w1::w2::ws) H).
 
 Definition eval_op1 (op : op1) (c : word) : word :=
   match op with
@@ -176,6 +156,132 @@ Definition eval_op3 (op : op3) (c1 c2 c3 : word) : word :=
     | OP_MULMOD => c1
   end.
 
+
+Definition option_mkstack (st : list word) : option stack_t :=
+  match le_lt_dec 1024 (length st) with
+    | right LEN => Some (mkstack st LEN)
+    | left _ => None
+  end.
+
+
+Definition swap (n : nat) (ws : list word) : option (list word) :=
+  match firstn n ws, skipn n ws with
+    | x::xs, y::ys => Some ((y::xs) ++ (x::ys))
+    | _, _ => None
+  end.
+
+Lemma swap_same_length : forall n ws v, swap n ws = Some v -> length v = length ws.
+Proof.
+  intros.
+  unfold swap in H.
+  destruct (firstn n ws) eqn:Qf. discriminate H.
+  destruct (skipn n ws) eqn:Qs. discriminate H.
+  rewrite <- (firstn_skipn n ws).
+  rewrite -> Qf, Qs.
+  inversion H.
+  rewrite -> app_comm_cons.
+  repeat rewrite -> app_length.
+  reflexivity.
+Qed.
+
+Lemma swap_lt_1024 : forall n ws v,
+  swap n ws = Some v ->
+  length ws < 1024 ->
+  length v < 1024.
+Proof.
+  intros ? ? ? SWAP H.
+  rewrite (swap_same_length _ _ _ SWAP).
+  apply H.
+Qed.
+
+Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t.
+  refine (match i, s with
+    | I_STOP, _ => None
+    | I_OP1 op, mkstack (w::st) LEN => Some (mkstack (eval_op1 op w::st) LEN)
+    | I_OP1 _, mkstack nil _ => None
+    | I_OP2 op, mkstack (w::w0::st) LEN => Some (mkstack (eval_op2 op w w0::st) (pop_lt LEN))
+    | I_OP2 _, _ => None
+    | I_OP3 op, mkstack (w::w0::w1::st) LEN => Some (mkstack (eval_op3 op w w0 w1::st) (pop_lt (pop_lt LEN)))
+    | I_OP3 _, _ => None
+    | I_POP, mkstack (w::st) LEN => Some (mkstack st (pop_lt LEN))
+    | I_POP, _ => None
+    | I_PUSH items _, mkstack st _  => option_mkstack (items ++ st)
+    | I_DUP n _, mkstack st _  =>
+             match List.nth_error st n with
+               | Some v => option_mkstack (v::st)
+               | None => None
+             end
+    | I_SWAP n _, mkstack ws LEN =>
+             _
+  end).
+rewrite <- (firstn_skipn n ws) in LEN.
+destruct (firstn n ws).
+- apply None.
+- destruct (skipn n ws).
+  * apply None.
+  * refine (Some (mkstack ((w0::l0) ++ (w::l1)) _)).
+    enough  (length ((w0 :: l0) ++ (w :: l1)) = length ((w::l0) ++ (w0::l1))) as ->.
+    + apply LEN.
+    +
+      rewrite -> app_length.
+      rewrite -> app_length.
+      reflexivity.
+Defined.
+Print exec_so_instr.
+
+Lemma swap_same_length' : forall T (w0 w1 : T) l0 l1,
+  length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
+Proof.
+  intros.
+  rewrite -> app_length.
+  rewrite -> app_length.
+  reflexivity.
+Qed.
+
+Definition inbounds n : Prop := n < 1024.
+Definition noflow (xs : list word) : Prop := inbounds (length xs).
+
+Definition exec_so_instr' (i : so_instruction) (s : stack_t) : option stack_t :=
+  match i, s with
+    | I_STOP, _ => None
+    | I_OP1 op, mkstack (w::st) LEN => Some (mkstack (eval_op1 op w::st) LEN)
+    | I_OP1 _, mkstack nil _ => None
+    | I_OP2 op, mkstack (w::w0::st) LEN => Some (mkstack (eval_op2 op w w0::st) (pop_lt LEN))
+    | I_OP2 _, _ => None
+    | I_OP3 op, mkstack (w::w0::w1::st) LEN => Some (mkstack (eval_op3 op w w0 w1::st) (pop_lt (pop_lt LEN)))
+    | I_OP3 _, _ => None
+    | I_POP, mkstack (w::st) LEN => Some (mkstack st (pop_lt LEN))
+    | I_POP, _ => None
+    | I_PUSH items _, mkstack st _  => option_mkstack (items ++ st)
+    | I_DUP n _, mkstack st _  =>
+             match List.nth_error st n with
+               | Some v => option_mkstack (v::st)
+               | None => None
+             end
+    | I_SWAP n _, mkstack ws LEN =>
+           let LEN0 := eq_ind_r noflow LEN (firstn_skipn n ws) in
+           match firstn n ws as l1
+           with
+           | nil => fun _ => None
+           | w :: l1 =>
+               match skipn n ws as l3
+               with
+               | nil => fun _ => None
+               | w0 :: l3 =>
+                   fun LEN2 =>
+                   Some
+                     {|
+                     stckval := (w0 :: l1) ++ w :: l3;
+                     stcksize := eq_ind_r inbounds LEN2
+                                   (swap_same_length' word w0 w l1 l3)|}
+               end
+           end LEN0
+  end.
+Lemma swap_same_length' : forall n ws,
+  length ws > n ->
+  (exists v, swap n ws = Some v /\ length v = length ws).
+
+
 Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
   match i, stckval s, stckval s' with
    | I_STOP, _, _ => False
@@ -192,90 +298,101 @@ Definition act (i : so_instruction) (s s' : stack_t) : Prop :=
        st' = st
        /\ List.nth_error st n = Some c0
    | I_DUP _ _, _, _ => False
-   | I_SWAP1, (x::y::cs), (y'::x'::cs') =>
-       x = x' /\ y = y' /\ cs = cs'
+   | I_SWAP1, (x::y::cs), ws' =>
+       ws' = y::x::cs
    | I_SWAP1, _, _ => False
-   | I_SWAP2, (x::c1::y::cs), (y'::c1'::x'::cs') =>
-       x = x' /\ y = y' /\ cs = cs' /\ c1 = c1'
+   | I_SWAP2, (x::c1::y::cs), ws' =>
+       ws' = y::c1::x::cs
    | I_SWAP2, _, _ => False
-   | I_SWAP3, (x::c1::c2::y::cs), (y'::c1'::c2'::x'::cs') =>
-       x = x' /\ y = y' /\ cs = cs' /\ c1 = c1' /\ c2 = c2'
+   | I_SWAP3, (x::c1::c2::y::cs), ws' =>
+       ws' = y::c1::c2::x::cs
    | I_SWAP3, _, _ => False
   end.
 
+Ltac remove_impossible :=
+  try (left; simpl; exact (fun _ H => H)).
 
 Lemma t : forall i s, (forall s', ~ act i s s')\/(exists s', act i s s').
 Proof.
   intros.
-  destruct s.
-  destruct i; auto.
-  - destruct stckval0; auto.
+  destruct s as [st LEN].
+  destruct i.
+  - (* I_STOP *)
+    remove_impossible.
+  - (* I_OP1 *)
+    destruct st; remove_impossible.
     right.
-    exists (apply_1_1 (eval_op1 o) w stckval0 stcksize0).
+    exists (mkstack (eval_op1 o w::st) LEN).
     reflexivity.
-  - do 2 (destruct stckval0; auto).
+  - (* I_OP2 *)
+    do 2 (destruct st; remove_impossible).
     simpl. right.
-    exists (apply_2_1 (eval_op2 o) w w0 stckval0 stcksize0).
+    exists (mkstack (eval_op2 o w w0::st) (pop_lt LEN)).
     reflexivity.
-  - do 3 (destruct stckval0; auto).
+  - (* I_OP3 *)
+    do 3 (destruct st; remove_impossible).
     simpl. right.
-    exists (apply_3_1 (eval_op3 o) w w0 w1 stckval0 stcksize0).
+    exists (mkstack (eval_op3 o w w0 w1::st) (pop_lt (pop_lt LEN))).
     reflexivity.
-  - destruct stckval0; auto.
-    right. simpl. exists (pop w stckval0 stcksize0).
+  - (* I_POP *)
+    destruct st; remove_impossible.
+    right. exists (mkstack st (pop_lt LEN)).
     reflexivity.
-  - simpl.
-    clear stcksize0.
-    pose (le_lt_dec 1024 (length (items ++ stckval0))).
+  - (* I_PUSH *)
+    simpl.
+    pose (le_lt_dec 1024 (length (items ++ st))).
     inversion s.
-    + clear s. left. intros. destruct s'. simpl.
-      intro. rewrite <- H0 in *. clear a H0 stckval0 items.
-      apply (le_not_lt 1024 (length stckval1) H).
-      assumption.
-    + clear s. right.
-      exists (mkstack (items ++ stckval0) H).
+    + left. intros. destruct s' as [st' LEN']. simpl.
+      intro. subst st'.
+      apply (le_not_lt 1024 (length (items ++ st)) H LEN').
+    + right.
+      exists (mkstack (items ++ st) H).
       reflexivity.
-  - simpl.
-    clear stcksize0.
-    pose (le_lt_dec (length stckval0) n).
+  - (* I_DUP *)
+    simpl.
+    clear LEN.
+    pose (le_lt_dec (length st) n).
     inversion s.
     + left. intros [cs P]. simpl. destruct cs; auto.
-      intro. inversion H0 as [_ N]. 
-      assert (nth_error stckval0 n <> None). intro. rewrite -> H1 in N.  inversion N.
+      intro. inversion H0 as [_ N].
+      assert (nth_error st n <> None). intro. rewrite -> H1 in N.  inversion N.
       apply nth_error_Some in H1.
-      apply (le_not_lt (length stckval0) n). assumption. assumption.
-    + pose (le_lt_dec 1023 (length stckval0)).
+      apply (le_not_lt (length st) n); assumption.
+    + pose (le_lt_dec 1023 (length st)).
       inversion s0.
       * left.
-        intro. destruct s'. destruct stckval1; auto. simpl.
-        intros [A B]. rewrite -> A in stcksize0.
-        simpl in stcksize0.
-        apply (le_not_lt 1023 (length stckval0)); auto. 
-          apply Lt.lt_S_n.
-        assumption.
+        intro. destruct s' as [st1 LEN1].
+        destruct st1. exact (fun H => H).
+        simpl.
+        intros [A B]. subst st1.
+        apply (le_not_lt 1023 (length st) H0).
+        apply (Lt.lt_S_n _ _ LEN1).
      * right. clear s.
-       pose (nth_error stckval0 n).
-       assert (forall w, length (w::stckval0) < 1024) by (intros; simpl; apply Lt.lt_n_S; assumption).
-       destruct (nth_error stckval0 n) eqn:Q.
-       ** assert (length (w::stckval0) < 1024) by (simpl; apply Lt.lt_n_S; assumption).
-          exists (mkstack (w::stckval0) (H1 w)).
-          simpl. auto.
+       pose (nth_error st n).
+       assert (forall w, length (w::st) < 1024) by (intros; simpl; apply Lt.lt_n_S; assumption).
+       destruct (nth_error st n) eqn:Q.
+       ** assert (length (w::st) < 1024) by (simpl; apply Lt.lt_n_S; assumption).
+          exists (mkstack (w::st) (H1 w)).
+          simpl. split; reflexivity.
        ** apply nth_error_None in Q.
-          apply (le_not_lt (length stckval0) n Q) in H. inversion H.
-  - destruct stckval0. left; auto.
-    do 1 (destruct stckval0; simpl; auto).
-    right. simpl. 
-    exists (mkstack (w0 :: w :: stckval0) stcksize0); simpl;  auto.
-  - destruct stckval0. left; auto.
-    do 2 (destruct stckval0; simpl; auto).
-    right. simpl.
-    exists (mkstack (w1 :: w0 :: w :: stckval0) stcksize0); simpl;  auto.
-  - destruct stckval0. left; auto.
-    do 3 (destruct stckval0; simpl; auto).
-    right. simpl. 
-    exists (mkstack (w2 :: w0 :: w1 :: w :: stckval0) stcksize0); simpl;  auto.
+          apply (le_not_lt (length st) n Q) in H.
+          contradiction.
+  - (* I_SWAP1 *)
+    do 2 (destruct st; remove_impossible).
+    right.
+    exists (mkstack (w0 :: w :: st) LEN).
+    reflexivity.
+  - (* I_SWAP2 *)
+    do 3 (destruct st; remove_impossible).
+    right.
+    exists (mkstack (w1 :: w0 :: w :: st) LEN).
+    reflexivity.
+  - (* I_SWAP3 *)
+    do 4 (destruct st; remove_impossible).
+    right.
+    exists (mkstack (w2 :: w0 :: w1 :: w :: st) LEN).
+    reflexivity.
 Defined.
-
 
 Theorem coerce (xs : list word) : {1024 <= length xs}+{length xs < 1024}.
 Proof.
@@ -341,27 +458,6 @@ Proof.
   apply (Nat.ltb_lt (length l) 1024), H.
 Qed.
 
-Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
-  match i with
-    | I_STOP => None
-    | I_OP1 op => apply_1_1 (eval_op1 op) s
-    | I_OP2 op => apply_2_1 (eval_op2 op) s
-    | I_OP3 op => apply_3_1 (eval_op3 op) s
-    | I_POP => pop s
-    | I_PUSH xs => let st' := xs ++ stckval s in
-                   match Reflect length st' <? 1024 with
-                     | ReflectT _ _ => Some (mkstack st' (qqq st'))
-                     | false => None
-                   end
-    | _ => None
-  end.
-    | I_DUP n => match List.nth_error (stckval s) n with
-                   | Some v => Some (mkstack (v::(stckval s)) (firstn_lt_1024 st'))
-                   | None => None
-                 end
-    | I_SWAP n => let depth := firstn n s in
-                  if ltb (length depth) n then None else Some (depth ++ s)
-  end.
 
 Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option nat :=
   match i with
