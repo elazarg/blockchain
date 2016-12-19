@@ -207,14 +207,14 @@ Definition exec_so_instr' (i : so_instruction) (s : stack_t) : option stack_t :=
 Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option nat :=
   match i with
     | I_JUMP => match s with
-                  | to::xs => Some to 
+                  | mkstack (to::xs) _ => Some to 
                   | _ => None
                 end
     | I_JUMPI => match s with
-                   | to::cond::xs => Some (if cond then to else pc + 1)
+                   | mkstack (to::cond::xs) _ => Some (if cond then to else pc + 1)
                    | _ => None
                 end
-    | I_STACK_ONLY (I_PUSH xs) => Some (pc + 1) (* depends on code address encoding *)
+    | I_STACK_ONLY (I_PUSH _ _) => Some (pc + 1) (* depends on code address encoding *)
     | _ => Some (pc + 1)
   end.
 
