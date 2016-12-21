@@ -5,12 +5,321 @@ CompCert - https://github.com/AbsInt/CompCert/blob/master/x86/Asm.v
 *)
 Require Import Bool.
 Require Import List.
+
+Import ListNotations.
+
 Require Import Nat.
 Require Import EqNat.
 Require Import Arith.
 Require Import Arith.PeanoNat.
 Require Import Arith.Compare_dec.
 Require Import PeanoNat.
+
+Section SKIPN.
+
+Variables (A : Type).
+
+(* firstn_nil: forall (A : Type) (n : nat), firstn n nil = nil *)
+Lemma skipn_nil : forall (n : nat),
+  skipn n nil = (nil : list A).
+Proof. destruct n; reflexivity. Qed.
+
+Lemma skipn_nil_length : forall (n : nat) (ws : list A),
+  skipn n ws = nil -> length ws <= n.
+Proof.
+  induction n; intros; simpl in H.
+  - subst ws. apply Peano.le_0_n.
+  - destruct ws.
+    + apply Peano.le_0_n.
+    + apply IHn in H.
+      apply Peano.le_n_S, H.
+Qed.
+
+(*
+
+firstn_cons:  forall (A : Type) (n : nat) (a : A) (l : list A),
+  firstn (S n) (a :: l) = a :: firstn n l
+firstn_O: forall (A : Type) (l : list A), firstn 0 l = nil
+firstn_le_length: forall (A : Type) (n : nat) (l : list A), length (firstn n l) <= n
+firstn_length_le:  forall (A : Type) (l : list A) (n : nat),
+  n <= length l -> length (firstn n l) = n
+firstn_firstn:  forall (A : Type) (l : list A) (i j : nat),
+  firstn i (firstn j l) = firstn (min i j) l
+
+removelast_firstn:  forall (A : Type) (n : nat) (l : list A),
+  n < length l -> removelast (firstn (S n) l) = firstn n l
+firstn_removelast:  forall (A : Type) (n : nat) (l : list A),
+  n < length l -> firstn n (removelast l) = firstn n l
+*)
+
+(*
+firstn_all2: forall (A : Type) (n : nat) (l : list A), length l <= n -> firstn n l = l
+*)
+Lemma skipn_lt : forall (n : nat) (l : list A),
+  skipn n l <> nil -> n < length l.
+Proof.
+  induction n; intros.
+  - destruct (zerop (length l)).
+    + apply length_zero_iff_nil in e.
+      contradiction.
+    + assumption.
+  - destruct l; simpl in H.
+    + contradiction.
+    + apply IHn in H.
+      apply lt_n_S, H.
+Qed.
+
+Lemma skipn_head_lt : forall (n : nat) (l : list A) (x : A) (xs : list A),
+  skipn n l = x::xs -> n < length l.
+Proof.
+  intros.
+  assert (skipn n l <> nil).
+    intro. rewrite -> H0 in H. inversion H.
+  apply skipn_lt.
+  assumption.
+Qed.
+
+(* firstn_length:  forall (A : Type) (n : nat) (l : list A),
+  length (firstn n l) = min n (length l) *)
+Lemma skipn_length: forall (n : nat) (l : list A),
+  length (skipn n l) <= length l.
+Proof.
+  induction n; auto.
+  intros.
+  destruct l; auto.
+  simpl.
+  apply le_S.
+  apply IHn.
+Qed.
+
+Lemma skipn_not_lengthen : forall (n : nat) (a : A) (l : list A),
+  skipn n l <> a::l.
+Proof.
+  unfold not.
+  intros. assert (length (skipn n l) <= length l) by (apply skipn_length).
+  rewrite -> H in H0. simpl in H0.
+  apply le_S_gt in H0.
+  apply (gt_irrefl _ H0).
+Qed.
+
+Lemma skipn_short : forall (l l': list A),
+  skipn (length l) (l ++ l') = l'.
+Proof.
+  induction l.
+  intros. reflexivity.
+  assumption.
+Qed.
+(* 
+firstn_all: forall (A : Type) (l : list A), firstn (length l) l = l
+firstn_all2: forall (A : Type) (n : nat) (l : list A), length l <= n -> firstn n l = l 
+*)
+Lemma skipn_head_all : forall (n : nat) (a : A) (l l': list A),
+  skipn n (l ++ (a::l')) = (a::l') -> n = length l.
+Proof.
+  induction n; intros; simpl in H.
+  - rewrite <- app_nil_l in H.
+    apply app_inv_tail in H.
+    subst l.
+    reflexivity.
+  - destruct l.
+    + apply skipn_not_lengthen in H. contradiction.
+    + simpl. f_equal. apply IHn in H. assumption.
+Qed.
+
+(* firstn_app:  forall (A : Type) (n : nat) (l1 l2 : list A),
+  firstn n (l1 ++ l2) = firstn n l1 ++ firstn (n - length l1) l2
+firstn_app_2:  forall (A : Type) (n : nat) (l1 l2 : list A),
+  firstn (length l1 + n) (l1 ++ l2) = l1 ++ firstn n l2 *)
+
+Lemma skipn_app : forall (a : A) (l l' : list A),
+  skipn (length l) (l ++ (a::l')) = (a::l').
+Proof. induction l; auto. Qed.
+
+Lemma skipn_succ : forall {T} n l (x : T) xs,
+  x :: xs = skipn n l -> xs = skipn (1 + n) l.
+Proof.
+  induction n; intros; destruct l; (try rewrite -> skipn_nil' in H; inversion H).
+  + inversion H.
+    reflexivity.
+  + simpl in H.
+    apply IHn in H.
+    subst xs.
+    destruct l; reflexivity.
+Qed.
+
+End SKIPN.
+
+Lemma app_app : forall {A : Type} (x y: list A) (a : A),
+  x ++ a::y = (x ++ [a]) ++ y.
+Proof.
+  induction x; auto.
+  intros.
+  simpl.
+  rewrite <- IHx.
+  reflexivity.
+Qed.
+
+Lemma cons_inj : forall {A : Type} (l : list A) (a : A),
+  l <> a::l.
+Proof.
+  unfold not.
+  induction l; intros; inversion H.
+  apply IHl in H2.
+  assumption.
+Qed.
+
+Definition remove_option {T T' : Type} (f : T -> option T') x (P: f x <> None) : T' :=
+  match f x as res return (res <> None -> T') with
+    | Some t => fun _ => t
+    | None => fun P0 => False_rect _ (P0 eq_refl)
+  end P.
+
+Lemma remove_option_sound : forall (T T' : Type) (f: T -> option T') x P,
+  f x = Some (remove_option f x P).
+Proof.
+  intros.
+  unfold remove_option.
+  destruct (f x).
+  + reflexivity.
+  + contradiction.
+Qed.
+
+Section SWAP.
+
+Definition swap {T : Type} (n : nat) (ws : list T) : option (list T) :=
+   match skipn (1+n) ws, firstn (1+n) ws with
+     | w1 :: l1, w0 :: l0 => Some ((w1 :: l0) ++ w0 :: l1)
+     | _, _ => None
+   end.
+
+Variable (T : Type).
+
+Lemma swap_same_length : forall (w0 w1 : T) (l0 l1 : list T),
+  length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
+Proof.
+  intros.
+  rewrite -> app_length.
+  rewrite -> app_length.
+  reflexivity.
+Qed.
+
+Lemma swap_eq : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws' ->
+  length ws = length ws'.
+Proof.
+  intros n ws ws'.
+  intros.
+  unfold swap in H.
+  destruct (skipn (1+n) ws) eqn:S. discriminate H.
+  destruct (firstn (1+n) ws) eqn:F. discriminate H.
+  rewrite <- (firstn_skipn (1+n) ws).
+  inversion H.
+  rewrite -> F, S.
+  rewrite -> app_comm_cons.
+  apply swap_same_length.
+Qed.
+
+Lemma swap_long : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws' ->
+  (1+n) < length ws.
+Proof.
+  intros. simpl.
+  unfold swap in H.
+  destruct (skipn (1 + n) ws) eqn:Q. inversion H.
+  destruct (firstn (1 + n) ws). inversion H.
+  apply skipn_head_lt in Q.
+  assumption.
+Qed.
+
+Lemma erased_swap_skipn : forall (w0 w1 : T) (l0 l1 : list T),
+  swap (length l0) ((w0 :: l0) ++ w1 :: l1) = Some ((w1 :: l0) ++ w0 :: l1).
+Proof.
+  intros.
+  unfold swap.
+  assert (1 + length l0 = length (w0::l0)) by reflexivity.
+  rewrite -> H.
+  rewrite -> firstn_app, firstn_all, minus_diag.
+  rewrite -> skipn_app, app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma swap_long' : forall (n : nat) (ws : list T),
+  1 + n < length ws ->
+  swap n ws <> None.
+Proof.
+  unfold not.
+  intros.
+  unfold swap in H0.
+  destruct (firstn (1 + n)) eqn:Q.
+  - assert (L : 1 + n <= length ws) by (apply lt_le_S, Nat.lt_succ_l; assumption).
+    apply firstn_length_le in L.
+    rewrite -> Q in L.
+    inversion L.
+  - destruct (skipn (1 + n) ws) eqn:Q1.
+    + apply lt_not_le in H.
+      apply skipn_nil_length in Q1.
+      contradiction.
+    + inversion H0.
+Qed.
+
+Lemma swap_correct : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws'
+  -> exists w0 w1 l0 l1, ws = (w0::l0) ++ (w1::l1) /\ ws' = (w1::l0) ++ (w0::l1).
+Proof.
+  intros. unfold swap in H.
+  assert ( firstn (1 + n) ws ++ skipn (1 + n) ws = ws) by apply firstn_skipn.
+  destruct ws eqn:Q. inversion H.
+  simpl in *.
+  destruct (skipn n l).
+  - inversion H.
+  - inversion H0.
+    exists t, t0, (firstn n l), (skipn (1+n) l).
+    assert (FS: firstn n l ++ skipn n l = l) by apply firstn_skipn.
+    split; [idtac | inversion H];
+      do 3 f_equal;
+      rewrite <- FS in H2 at 2;
+      apply app_inv_head, skipn_succ in H2;
+      assumption.
+Qed.
+
+Lemma swap_alpha_2n_delta_2n : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws'
+  -> skipn (2+n) ws = skipn (2+n) ws'.
+Proof.
+  intros.
+  unfold swap in H.
+  assert (FS: firstn (1+n) ws ++ skipn (1+n) ws = ws) by apply firstn_skipn.
+  destruct (skipn (1 + n) ws) eqn:SKIP. inversion H.
+  destruct (firstn (1 + n) ws). inversion H.
+  assert (W: forall (w0: T) w1 l0 l1, ((w1 :: l0) ++ [w0]) ++ l1 = (w1 :: l0) ++ w0 :: l1). {
+    intros. rewrite <- app_app. reflexivity.
+  }
+  rewrite <- W in H.
+  inversion H.
+  subst ws' ws.
+  rewrite <- W.
+  rewrite -> app_comm_cons at 1.
+  rewrite <- app_comm_cons at 1.
+  apply skipn_head_all in SKIP.
+  assert (L2: length (t0 :: l0 ++ [t]) = (2 + n)). {
+    rewrite -> app_comm_cons, app_length, plus_comm.
+    inversion SKIP.
+    reflexivity.
+  }
+  assert (R2: length (t :: l0 ++ [t0]) = (2 + n)). {
+    rewrite -> app_comm_cons, app_length, plus_comm.
+    inversion SKIP.
+    reflexivity.
+  }
+  rewrite <- L2 at 1; rewrite -> skipn_short.
+  rewrite <- R2 at 1; rewrite -> skipn_short.
+  reflexivity.
+Qed.
+
+Definition swap_new (n : nat) (ws : list T) (E : 1+n < length ws) :=
+  remove_option (swap n) ws (swap_long' n ws E).
+
+End SWAP.
 
 Definition byte := nat.
 Definition byte32 := {items : list byte | 0 < length items /\ length items <= 32}.
@@ -244,272 +553,6 @@ Definition dup (n : nat) (ws : list word) : option stack_t :=
      | None => None
    end.
 
-Definition erased_swap (n : nat) (ws : list word) : option (list word) :=
-   match skipn (1+n) ws, firstn (1+n) ws with
-     | w1 :: l1, w0 :: l0 => Some ((w1 :: l0) ++ w0 :: l1)
-     | _, _ => None
-   end.
-
-
-Lemma swap_same_length : forall {T} (w0 w1 : T) l0 l1,
-  length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
-Proof.
-  intros.
-  rewrite -> app_length.
-  rewrite -> app_length.
-  reflexivity.
-Qed.
-
-Lemma erased_swap_eq : forall (n : nat) (ws ws' : list word),
-  erased_swap n ws = Some ws' ->
-  length ws = length ws'.
-Proof.
-  intros n ws ws'.
-  intros.
-  unfold erased_swap in H.
-  destruct (skipn (1+n) ws) eqn:S. discriminate H.
-  destruct (firstn (1+n) ws) eqn:F. discriminate H.
-  rewrite <- (firstn_skipn (1+n) ws).
-  inversion H.
-  rewrite -> F, S.
-  rewrite -> app_comm_cons.
-  apply swap_same_length.
-Qed.
-
-Lemma skipn_le : forall {T} (n : nat) (ws : list T),
-  skipn n ws <> nil -> n < length ws.
-Proof.
-  induction n.
-  intros. pose (zerop (length ws)). destruct s.
-    apply length_zero_iff_nil in e. contradiction.
-    assumption.
-  intros.
-  destruct ws. simpl in H. contradiction.
-  simpl in H. apply IHn in H. simpl.
-  apply lt_n_S.
-  assumption.
-Qed.
-
-Lemma skipn_le' : forall {T} (n : nat) (ws : list T) x xs,
-  skipn n ws = x::xs -> n < length ws.
-Proof.
-  intros.
-  assert (skipn n ws <> nil).
-    intro. rewrite -> H0 in H. inversion H.
-  apply skipn_le.
-  assumption.
-Qed.
-
-Lemma skipn_res_shorter: forall {T} (n : nat) (ws : list T),
-  length (skipn n ws) <= length ws.
-Proof.
-  induction n;  auto.
-  intros. destruct ws; auto.
-  simpl.
-  apply le_S.
-  apply IHn.
-Qed.
-
-Lemma skipn_not_lengthen : forall {T} (n : nat) (ws : list T) w,
-  skipn n ws <> w::ws.
-Proof.
-  unfold not.
-  intros. assert (length (skipn n ws) <= length ws) by (apply skipn_res_shorter).
-  rewrite -> H in H0. simpl in H0.
-  apply le_S_gt in H0.
-  apply (gt_irrefl _ H0).
-Qed.
-
-Lemma skipn_short : forall {T} (xs : list T) ys,
-  skipn (length xs) (xs ++ ys) = ys.
-Proof.
-  induction xs.
-  intros. reflexivity.
-  simpl. assumption.
-Qed.
-
-Lemma cons_inj : forall {T} xs (x: T),
-  xs <> x::xs.
-Proof.
-  unfold not.
-  induction xs.
-  intros. inversion H.
-  intros. inversion H. apply IHxs in H2. assumption.
-Qed.
-
-Lemma skipn_short1 : forall {T} n  (xs : list T) y ys,
-  skipn n (xs ++ (y::ys)) = (y::ys) -> n = length xs.
-Proof.
-  induction n.
-  intros. simpl in H. rewrite <- app_nil_l in H. apply app_inv_tail in H. subst xs. reflexivity. 
-  intros.
-  destruct xs. simpl in H. apply skipn_not_lengthen in H. contradiction.
-
-  simpl in H. simpl. f_equal. apply IHn in H. assumption.
-Qed.
-
-Lemma skipn_app : forall {T} (xs : list T) y ys,
-  skipn (length xs) (xs ++ (y::ys)) = (y::ys).
-Proof.
-  induction xs.
-  intros. reflexivity.
-  intros.
-  simpl. apply IHxs.
-Qed.
-
-Lemma app_app : forall {T} (xs xs': list T) x,
-  xs ++ x::xs' = (xs ++ (x::nil)) ++ xs'.
-Proof.
-  induction xs; auto.
-  intros. simpl. rewrite <- IHxs. reflexivity.
-Qed.
-
-Lemma erased_swap_long : forall (n : nat) (ws ws' : list word),
-  erased_swap n ws = Some ws' ->
-  (1+n) < length ws.
-Proof.
-  intros. simpl.
-  unfold erased_swap in H.
-  destruct (skipn (1 + n) ws) eqn:Q. inversion H.
-  destruct (firstn (1 + n) ws). inversion H.
-  apply skipn_le' in Q.
-  assumption.
-Qed.
-
-Lemma erased_swap_skipn : forall w0 w1 l0 l1,
-  erased_swap (length l0) ((w0 :: l0) ++ w1 :: l1) = Some ((w1 :: l0) ++ w0 :: l1).
-Proof.
-  intros.
-  unfold erased_swap.
-  assert (1 + length l0 = length (w0::l0)) by reflexivity.
-  rewrite -> H.
-  rewrite -> firstn_app, firstn_all, minus_diag.
-  rewrite -> skipn_app, app_nil_r.
-  reflexivity.
-Qed.
-
-Lemma skipn_nil : forall {T} (n : nat) (ws : list T),
-  skipn n ws = nil -> length ws <= n.
-Proof.
-  induction n.
-  intros. simpl in H. subst ws. auto.
-  intros. simpl in H. destruct ws. apply Peano.le_0_n.
-  simpl. apply IHn in H. apply Peano.le_n_S, H.
-Qed.
-
-Lemma skipn_nil' : forall {T} (n : nat),
-  skipn n nil = (nil : list T).
-Proof.
-  destruct n; reflexivity.
-Qed.
-
-Lemma erased_swap_long' : forall (n : nat) (ws : list word),
-  1+n < length ws -> erased_swap n ws <> None.
-Proof.
-  unfold not.
-  intros.
-  unfold erased_swap in H0.
-  destruct (firstn (1 + n)) eqn:Q.
-  +  assert (1 + n <= length ws). apply lt_le_S, Nat.lt_succ_l. assumption.
-     apply firstn_length_le in H1.
-     rewrite -> Q in H1. inversion H1.
-  +
-    destruct (skipn (1 + n) ws) eqn:Q1.
-    apply skipn_nil in Q1. apply lt_not_le in H. contradiction.
-    inversion H0.
-Qed.
-
-Lemma skipn_succ : forall {T} n l (x : T) xs,
-  x :: xs = skipn n l -> xs = skipn (1 + n) l.
-Proof.
-  induction n; intros; destruct l; (try rewrite -> skipn_nil' in H; inversion H).
-  + simpl. inversion H. reflexivity.
-  + simpl in H. apply IHn in H. subst xs. destruct l; reflexivity.
-Qed.
-
-Lemma erased_swap_correct : forall (n : nat) (ws ws' : list word),
-  erased_swap n ws = Some ws'
-  -> exists w0 w1 l0 l1, ws = (w0::l0) ++ (w1::l1) /\ ws' = (w1::l0) ++ (w0::l1).
-Proof.
-  intros. unfold erased_swap in H.
-  assert ( firstn (1 + n) ws ++ skipn (1 + n) ws = ws) by apply firstn_skipn.
-  destruct ws eqn:Q. inversion H.
-  simpl in *.  destruct (skipn n l). inversion H. inversion H0.
-  exists w, w0, (firstn n l), (skipn (1+n) l).
-  assert (FS: firstn n l ++ skipn n l = l) by apply firstn_skipn.
-  split; [idtac | inversion H];
-    do 3 f_equal;
-    rewrite <- FS in H2 at 2;
-    apply app_inv_head, skipn_succ in H2;
-    assumption.
-Qed.
-
-Lemma erased_swap_correct' : forall (n : nat) (ws ws' : list word),
-  erased_swap n ws = Some ws'
-  -> skipn (2+n) ws = skipn (2+n) ws'.
-Proof.
-  intros.
-  unfold erased_swap in H.
-  assert (FS: firstn (1+n) ws ++ skipn (1+n) ws = ws) by apply firstn_skipn.
-  assert (FS': firstn (1+n) ws' ++ skipn (1+n) ws' = ws') by apply firstn_skipn.
-  assert (FSq: firstn (2+n) ws ++ skipn (2+n) ws = ws) by apply firstn_skipn.
-  assert (FSq': firstn (2+n) ws' ++ skipn (2+n) ws' = ws') by apply firstn_skipn.
-  assert (W:forall (w0: word) w1 l0 l1, ((w1 :: l0) ++ (w0::nil)) ++ l1 = (w1 :: l0) ++ w0 :: l1). {
-    intros. rewrite <- app_app. reflexivity.
-  }
-  destruct (skipn (1 + n) ws) eqn:Q1. inversion H.
-  destruct (firstn (1 + n) ws) eqn:Q2. inversion H.
-  rewrite <- W in H.
-  inversion H.
-  subst ws'.
-  subst ws.
-  rewrite <- W.
-  rewrite -> app_comm_cons.
-  rewrite <- app_comm_cons.
-  apply skipn_short1 in Q1.
-  assert (length (w0 :: l0 ++ w :: nil) = (2 + n)).
-    rewrite -> app_comm_cons.
-    rewrite -> app_length. rewrite <- Q1. rewrite -> plus_comm. reflexivity.
-  assert (length (w :: l0 ++ w0 :: nil) = (2 + n)).
-    rewrite -> app_comm_cons. simpl. 
-    rewrite -> app_length.
-    simpl in Q1. inversion Q1. simpl. rewrite -> plus_comm. reflexivity.
-  rewrite <- H0 at 1.
-  rewrite <- H1 at 1.
-  rewrite -> skipn_short.
-  rewrite -> skipn_short.
-  reflexivity.
-Qed.
-
-Definition remove_option {T T'} (f : T -> option T') x (P: f x <> None) : T' :=
-  match f x as res return (res <> None -> T') with
-    | Some t => fun _ => t
-    | None => fun P0 => False_rect _ (P0 eq_refl)
-  end P.
-
-Lemma remove_option_sound : forall (T T': Type) (f: T -> option T') x P,
-  f x = Some (remove_option f x P).
-Proof.
-  intros.
-  unfold remove_option.
-  destruct (f x).
-  + reflexivity.
-  + contradiction.
-Qed.
-
-Definition swap_new (n : nat) (ws : list word) (E : 1+n < length ws) :=
-  remove_option (erased_swap n) ws (erased_swap_long' n ws E).
-
-Definition swap (n : nat) (ws : list word) LEN :=
-   match firstn (1+n) ws, skipn (1+n) ws with
-     | w0 :: l0, w1 :: l1 =>
-          fun LEN2 => Some  {|
-            stckval := (w1 :: l0) ++ w0 :: l1;
-            stcksize := eq_ind_r inbounds LEN2 (swap_same_length w1 w0 l0 l1)
-          |}
-     | _, _ => fun _ => None
-   end (eq_ind_r noflow LEN (firstn_skipn (1+n) ws)).
-
 Definition exec_so_instr (i : so_instruction) (st : list word) : option (list word) :=
   match i, st with
     | I_STOP, _ => None
@@ -526,7 +569,7 @@ Definition exec_so_instr (i : so_instruction) (st : list word) : option (list wo
                             | Some v => Some (v::ws)
                             | None => None
                           end
-    | I_SWAP n _, ws => erased_swap n ws
+    | I_SWAP n _, ws => swap n ws
   end.
 
 Theorem exec_so_nice : forall i st st',
@@ -537,61 +580,45 @@ Theorem exec_so_nice : forall i st st',
 Proof.
   intros.
   destruct (exec_so_instr i st) eqn:Q; inversion H.
-  subst l. clear H.
-  unfold exec_so_instr in Q.
+  subst l.
   destruct i.
-  + inversion Q.
-  + destruct st; inversion Q. reflexivity.
-  +
+  + (* I_STOP *)
+    discriminate Q.
+  + (* I_OP1 *)
+    destruct st; inversion Q.
+    reflexivity.
+  + (* I_OP2 *)
     destruct st eqn:?. simplify_eq Q.
     destruct l eqn:?. simplify_eq Q.
     inversion Q.
     reflexivity.
-  +
+  + (* I_OP3 *)
     destruct st eqn:?. simplify_eq Q.
     destruct l eqn:?. simplify_eq Q.
     destruct l0; inversion Q.
     reflexivity.
-  +
+  + (* I_POP *)
     destruct st eqn:?; inversion Q.
     reflexivity.
-  + 
+  + (* I_PUSH *)
     inversion Q.
     reflexivity.
   + (* I_DUP *)
-    unfold alpha in a; simpl in a; subst a.
-    unfold delta in d; simpl in d; subst d.
+    subst a d.
+    unfold exec_so_instr in Q.
     destruct (nth_error st n) eqn:NE; inversion Q.
-    destruct st. reflexivity.
+    destruct st; auto.
     simpl. f_equal. f_equal.
-    rewrite -> (firstn_skipn n st).
-    reflexivity.
+    symmetry.
+    apply firstn_skipn.
   + (* I_SWAP *)
-    unfold alpha in a; simpl in a; subst a.
-    unfold delta in d; simpl in d; subst d.
-    apply erased_swap_correct' in Q.
+    subst a d.
+    apply swap_alpha_2n_delta_2n in Q.
     rewrite <- (firstn_skipn (S (S n)) st') at 1.
     f_equal.
     symmetry.
     assumption.
 Qed.
-
-Definition exec_so_instr (i : so_instruction) (s : stack_t) : option stack_t :=
-  match i, s with
-    | I_STOP, _ => None
-    | I_OP1 op, mkstack (w::st) LEN => Some (mkstack (eval_op1 op w::st) LEN)
-    | I_OP1 _, mkstack nil _ => None
-    | I_OP2 op, mkstack (w::w0::st) LEN => Some (mkstack (eval_op2 op w w0::st) (pop_lt LEN))
-    | I_OP2 _, _ => None
-    | I_OP3 op, mkstack (w::w0::w1::st) LEN => Some (mkstack (eval_op3 op w w0 w1::st) (pop_lt (pop_lt LEN)))
-    | I_OP3 _, _ => None
-    | I_POP, mkstack (w::st) LEN => Some (mkstack st (pop_lt LEN))
-    | I_POP, _ => None
-    | I_PUSH item, mkstack st _  => option_mkstack (item::st)
-    | I_DUP n _, mkstack ws _  => dup n ws
-    | I_SWAP n _, mkstack ws LEN => swap n ws LEN
-  end.
-
 
 Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option nat :=
   match i with
@@ -606,61 +633,6 @@ Definition exec_jump_instr (i : instruction) (pc : nat) (s : stack_t) : option n
     | I_STACK_ONLY (I_PUSH _) => Some (pc + 1) (* depends on code address encoding *)
     | _ => Some (pc + 1)
   end.
-
-Theorem exec_so_nice : forall i st st',
-  exec_so_instr i st = Some st' ->
-    let d := delta (I_STACK_ONLY i) in
-    let a := alpha (I_STACK_ONLY i) in
-    stckval st' = firstn a (stckval st') ++ skipn d (stckval st).
-Proof.
-  destruct st as [s LEN]. simpl.
-  destruct st' as [s' LEN']. simpl.
-  intros.
-  destruct (exec_so_instr i {| stckval := s; stcksize := LEN |}) eqn:Q; inversion H.
-  subst s0. clear H.
-  unfold exec_so_instr in Q.
-  destruct i.
-  + inversion Q.
-  + destruct s; inversion Q. reflexivity.
-  +
-    destruct s eqn:?. simplify_eq Q.
-    destruct l eqn:?. simplify_eq Q.
-    inversion Q.
-    reflexivity.
-  +
-    destruct s eqn:?. simplify_eq Q.
-    destruct l eqn:?. simplify_eq Q.
-    destruct l0; inversion Q.
-    reflexivity.
-  +
-    destruct s eqn:?; inversion Q.
-    reflexivity.
-  +
-    unfold option_mkstack in Q.
-    destruct (le_lt_dec BOUND (length (w :: s))); inversion Q.
-    reflexivity.
-  + (* I_DUP *)
-    unfold alpha, delta.
-    unfold dup in Q; inversion Q.
-    destruct (nth_error s n) eqn:NE; inversion Q.
-    unfold option_mkstack in Q.
-    destruct (le_lt_dec BOUND (length (w :: s))); inversion Q.
-     simpl (snd (delta_alpha (I_STACK_ONLY (I_DUP n l)))).
-     simpl (fst (delta_alpha (I_STACK_ONLY (I_DUP n l)))).
-    assert (firstn_ssn : firstn (S (S n)) (w :: s) = w :: firstn (S n) s) by reflexivity.
-    rewrite -> firstn_ssn.
-    rewrite <- app_comm_cons.
-    rewrite -> (firstn_skipn (S n) s).
-    reflexivity.
-  + (* I_SWAP *)
-    unfold alpha, delta.
-     simpl (snd (delta_alpha (I_STACK_ONLY (I_SWAP n l)))).
-     simpl (fst (delta_alpha (I_STACK_ONLY (I_SWAP n l)))).
-    rewrite <- (firstn_skipn (S (S n)) s') at 1.
-    f_equal.
-    unfold swap in Q.
-
-Qed.
 
 Require Import FSets.FMapWeakList.
 Module Import MapNat := FMapWeakList.Make Nat.
