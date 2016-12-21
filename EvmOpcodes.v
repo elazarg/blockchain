@@ -231,7 +231,7 @@ Proof.
   assumption.
 Qed.
 
-Lemma erased_swap_skipn : forall (w0 w1 : T) (l0 l1 : list T),
+Lemma swap_skipn_length : forall (w0 w1 : T) (l0 l1 : list T),
   swap (length l0) ((w0 :: l0) ++ w1 :: l1) = Some ((w1 :: l0) ++ w0 :: l1).
 Proof.
   intros.
@@ -284,35 +284,29 @@ Qed.
 
 Lemma swap_alpha_2n_delta_2n : forall (n : nat) (ws ws' : list T),
   swap n ws = Some ws'
-  -> skipn (2+n) ws = skipn (2+n) ws'.
+  -> skipn (2 + n) ws = skipn (2 + n) ws'.
 Proof.
   intros.
   unfold swap in H.
   assert (FS: firstn (1+n) ws ++ skipn (1+n) ws = ws) by apply firstn_skipn.
   destruct (skipn (1 + n) ws) eqn:SKIP. inversion H.
   destruct (firstn (1 + n) ws). inversion H.
-  assert (W: forall (w0: T) w1 l0 l1, ((w1 :: l0) ++ [w0]) ++ l1 = (w1 :: l0) ++ w0 :: l1). {
-    intros. rewrite <- app_app. reflexivity.
-  }
-  rewrite <- W in H.
+
+  rewrite -> app_app in H.
   inversion H.
   subst ws' ws.
-  rewrite <- W.
+  rewrite -> app_app.
   rewrite -> app_comm_cons at 1.
   rewrite <- app_comm_cons at 1.
-  apply skipn_head_all in SKIP.
-  assert (L2: length (t0 :: l0 ++ [t]) = (2 + n)). {
-    rewrite -> app_comm_cons, app_length, plus_comm.
-    inversion SKIP.
-    reflexivity.
-  }
-  assert (R2: length (t :: l0 ++ [t0]) = (2 + n)). {
-    rewrite -> app_comm_cons, app_length, plus_comm.
-    inversion SKIP.
-    reflexivity.
-  }
-  rewrite <- L2 at 1; rewrite -> skipn_short.
-  rewrite <- R2 at 1; rewrite -> skipn_short.
+
+  Ltac skip x fstn SKIP := replace (2 + x) with (length fstn) at 1 by (
+    apply skipn_head_all in SKIP;
+    rewrite -> app_comm_cons, app_length, plus_comm;
+    inversion SKIP;
+    reflexivity
+  ).
+  skip n (t0 :: l0 ++ [t]) SKIP. rewrite -> skipn_short.
+  skip n (t :: l0 ++ [t0]) SKIP. rewrite -> skipn_short.
   reflexivity.
 Qed.
 
@@ -674,9 +668,6 @@ Variable size : nat.
 
 Require Import Vector.
 Variable code : Vector.t instruction size.
-
-
-
 
 Record state := State {
   stack : stack_t;
