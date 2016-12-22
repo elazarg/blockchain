@@ -1,8 +1,4 @@
-Require Import NAxioms.
-Require Import BinInt.
-
-Require Import Uint256.
-Import Word.
+Require Export Word.
 
 Inductive op1 : Type :=
   | OP_ISZERO
@@ -164,6 +160,8 @@ Definition delta_alpha (i: instruction) : nat*nat :=
 Definition delta (i: instruction) : nat := fst (delta_alpha i).
 Definition alpha (i: instruction) : nat := snd (delta_alpha i).
 
+Include Word.Word.
+
 Definition eval_op1 (op : op1) (x : word) : word :=
   match op with
     | OP_ISZERO => if eq x zero then one else zero
@@ -179,8 +177,8 @@ Definition eval_op2 (op : op2) (x y : word) : word :=
     | OP_SDIV => divs x y
     | OP_MOD => modu x y
     | OP_SMOD => mods x y
-    | OP_EXP => repr (Z.pow (unsigned x) (unsigned y))
-    | OP_SIGNEXTEND => x (* sext c1 c2 *)
+    | OP_EXP => exp x y
+    | OP_SIGNEXTEND => sext x y
     | OP_LT => if lt x y then one else zero
     | OP_GT => if lt y x then one else zero
     | OP_SLT => negative (sub x y)
@@ -189,11 +187,12 @@ Definition eval_op2 (op : op2) (x y : word) : word :=
     | OP_AND => and x y
     | OP_OR => or x y
     | OP_XOR => xor x y
-    | OP_BYTE => divu x y
+    | OP_BYTE => least_byte x y
   end.
 
 Definition eval_op3 (op : op3) (x y m : word) : word :=
   match op with
-    | OP_ADDMOD => repr ((Z.add (unsigned x) (unsigned y)) mod (unsigned m))
-    | OP_MULMOD => repr ((Z.mul (unsigned x) (unsigned y)) mod (unsigned m))
+    | OP_ADDMOD => addmod x y m
+    | OP_MULMOD => mulmod x y m
   end.
+`

@@ -1,6 +1,7 @@
 Require Import ZArith.
 Require Coqlib.
 
+Require Import Word.
 Require Import Instructions.
 Require Import Integers.
 Require Import Maps.

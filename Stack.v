@@ -14,6 +14,7 @@ Import ListNotations.
 (* Project modules *)
 Require Import ListUtils.
 Require Import Instructions.
+Require Import Word.
 
 Definition dup (n : nat) (ws : list word) : option (list word) :=
    match List.nth_error ws n with
@@ -113,14 +114,16 @@ Proof.
     assumption.
 Qed.
 
+Axiom word_to_pc : word -> nat.
+
 Definition exec_jump_instr (i : instruction) (pc : nat) (ws : list word) : option nat :=
   match i with
     | I_JUMP => match ws with
-                  | (to::xs) => Some to 
+                  | (to::xs) => Some (word_to_pc to)
                   | _ => None
                 end
     | I_JUMPI => match ws with
-                   | (to::cond::xs) => Some (if cond then to else pc + 1)
+                   | (to::cond::xs) => Some (if Word.eq cond Word.zero then (word_to_pc to) else pc + 1)
                    | _ => None
                 end
     | I_STACK_ONLY (I_PUSH _) => Some (pc + 1) (* depends on code address encoding *)
