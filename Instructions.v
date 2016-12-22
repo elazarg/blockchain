@@ -1,7 +1,14 @@
 
-Definition byte := nat.
-Definition byte32 := {items : list byte | 0 < length items /\ length items <= 32}.
-Definition word := nat.
+Require Import Integers.
+
+Require Import NAxioms.
+Require Import BinInt.
+
+Definition word := int64.
+Definition byte := byte.
+
+Module Word := Int64.
+Import Word.
 
 Inductive op1 : Type :=
   | OP_ISZERO
@@ -163,42 +170,47 @@ Definition delta_alpha (i: instruction) : nat*nat :=
 Definition delta (i: instruction) : nat := fst (delta_alpha i).
 Definition alpha (i: instruction) : nat := snd (delta_alpha i).
 
-Require Import Arith.
-
-
-Definition eval_op1 (op : op1) (c : word) : word :=
+Definition eval_op1 (op : op1) (x : word) : word :=
   match op with
-    | OP_ISZERO => if c then 0 else 1
-    | OP_NOT => if c then 0 else 1
+    | OP_ISZERO => if eq x zero then one else zero
+    | OP_NOT => neg x
   end.
 
-Definition eval_op2 (op : op2) (c1 c2 : word) : word :=
+
+
+Definition eval_op2 (op : op2) (x y : word) : word :=
   match op with
-    | OP_ADD => c1 + c2
-    | OP_MUL => c1 * c2
-    | OP_SUB => c1 - c2
-    | OP_DIV => c1 / c2
-    | _ => c1 (*
-    | OP_SDIV
-    | OP_MOD
-    | OP_SMOD
-    | OP_EXP
-    | OP_SIGNEXTEND
-    | OP_LT
-    | OP_GT
-    | OP_SLT
-    | OP_SGT
-    | OP_EQ
-    | OP_AND
-    | OP_OR
-    | OP_XOR
-    | OP_BYTE *)
+    | OP_ADD => add x y
+    | OP_MUL => mul x y
+    | OP_SUB => sub x y
+    | OP_DIV => divu x y
+    | OP_SDIV => divs x y
+    | OP_MOD => modu x y
+    | OP_SMOD => mods x y
+    | OP_EXP => repr (Z.pow (unsigned x) (unsigned y))
+    | OP_SIGNEXTEND => x (* sext c1 c2 *)
+    | OP_LT => if lt x y then one else zero
+    | OP_GT => if lt y x then one else zero
+    | OP_SLT => negative (sub x y)
+    | OP_SGT => negative (sub y x)
+    | OP_EQ => if eq x y then one else zero
+    | OP_AND => and x y
+    | OP_OR => or x y
+    | OP_XOR => xor x y
+    | OP_BYTE => divu x y
   end.
 
-Definition eval_op3 (op : op3) (c1 c2 c3 : word) : word :=
+Definition eval_op3 (op : op3) (x y m : word) : word :=
   match op with
-    | OP_ADDMOD => c1
-    | OP_MULMOD => c1
+    | OP_ADDMOD => repr ((Z.add (unsigned x) (unsigned y)) mod (unsigned m))
+    | OP_MULMOD => repr ((Z.mul (unsigned x) (unsigned y)) mod (unsigned m))
   end.
 
-Variable coerce_to_word : byte32 -> word.
+Definition shl8 (w : word) :=  Word.shl w (repr 8).
+Definition conc (w1 : word) (b : byte) :=  repr ((unsigned (shl8 w1)) + (Byte.unsigned b)).
+Notation "a @ b" := (conc a b) (at level 1).
+
+Definition word_from_bytes (a1 a2 a3 a4 a5 a6 a7 a8 : byte) : word :=
+  zero @ a1 @ a2 @ a3 @ a4 @ a5 @ a6 @ a7 @ a8.
+
+Axiom bytes_from_word : word -> byte*byte*byte*byte*byte*byte*byte*byte.
