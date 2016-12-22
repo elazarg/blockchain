@@ -42,6 +42,7 @@ Definition storage_read (addr: word) (p: storage) : word := WordMap.get (Word.in
 Definition storage_store (addr: word) (w: word) (p: storage) : storage := WordMap.set (Word.intval addr) w p.
 
 (* storage should be indexed by contract id *)
+(* TODO: this is remarkably similar to the interface of CompCerts' Memory.v *)
 Definition exec_storage_instr (i : storage_instruction) (p : storage) (ws : list word) : option (storage * list word) :=
   match i, ws with
     | I_SLOAD, addr::ws => Some (p, storage_read addr p :: ws)

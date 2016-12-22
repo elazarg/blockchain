@@ -4853,19 +4853,3 @@ Hint Resolve Int64.modulus_pos Int64.eqm_refl Int64.eqm_refl2 Int64.eqm_sym Int6
   Int64.eqm_unsigned_repr Int64.eqm_unsigned_repr_l Int64.eqm_unsigned_repr_r
   Int64.unsigned_range Int64.unsigned_range_2
   Int64.repr_unsigned Int64.repr_signed Int64.unsigned_repr : ints.
-
-
-Module Wordsize_256.
-  Definition wordsize := 256%nat.
-  Remark wordsize_not_zero: wordsize <> 0%nat.
-  Proof. unfold wordsize; congruence. Qed.
-End Wordsize_256.
-
-Strategy opaque [Wordsize_256.wordsize].
-
-Module Int256.
-
-Include Make(Wordsize_256).
-End Int256.
-
-Notation int256 := Int256.int.

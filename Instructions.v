@@ -1,13 +1,7 @@
-
-Require Import Integers.
-
 Require Import NAxioms.
 Require Import BinInt.
 
-Definition word := int64.
-Definition byte := byte.
-
-Module Word := Int64.
+Require Import Uint256.
 Import Word.
 
 Inductive op1 : Type :=
@@ -176,8 +170,6 @@ Definition eval_op1 (op : op1) (x : word) : word :=
     | OP_NOT => neg x
   end.
 
-
-
 Definition eval_op2 (op : op2) (x y : word) : word :=
   match op with
     | OP_ADD => add x y
@@ -205,12 +197,3 @@ Definition eval_op3 (op : op3) (x y m : word) : word :=
     | OP_ADDMOD => repr ((Z.add (unsigned x) (unsigned y)) mod (unsigned m))
     | OP_MULMOD => repr ((Z.mul (unsigned x) (unsigned y)) mod (unsigned m))
   end.
-
-Definition shl8 (w : word) :=  Word.shl w (repr 8).
-Definition conc (w1 : word) (b : byte) :=  repr ((unsigned (shl8 w1)) + (Byte.unsigned b)).
-Notation "a @ b" := (conc a b) (at level 1).
-
-Definition word_from_bytes (a1 a2 a3 a4 a5 a6 a7 a8 : byte) : word :=
-  zero @ a1 @ a2 @ a3 @ a4 @ a5 @ a6 @ a7 @ a8.
-
-Axiom bytes_from_word : word -> byte*byte*byte*byte*byte*byte*byte*byte.

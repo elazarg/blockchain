@@ -127,7 +127,7 @@ Definition exec_jump_instr (i : instruction) (pc : nat) (ws : list word) : optio
     | _ => Some (pc + 1)
   end.
 
-Parameter SUB_BOUND : nat.
+Definition SUB_BOUND := 1023.
 Definition BOUND := S SUB_BOUND.
 Definition inbounds n : Prop := n < BOUND.
 Definition noflow (xs : list word) : Prop := inbounds (length xs).
