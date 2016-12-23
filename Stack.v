@@ -1,9 +1,3 @@
-
-(*
-Sources:
-"small ad-hoc symbolic interpreter" - https://gist.github.com/pirapira/0946d151e038393078c3
-CompCert - https://github.com/AbsInt/CompCert/blob/master/x86/Asm.v
-*)
 Require Import Bool.
 Require Import List.
 Require Import Nat.
@@ -24,7 +18,6 @@ Definition dup (n : nat) (ws : list word) : option (list word) :=
 
 Definition exec_so_instr (i : so_instruction) (st : list word) : option (list word) :=
   match i, st with
-    | I_STOP, _ => None
     | I_OP1 op, w::ws => Some (eval_op1 op w::ws)
     | I_OP1 _, nil => None
     | I_OP2 op, (w::w0::ws) => Some (eval_op2 op w w0::ws)
@@ -76,8 +69,6 @@ Proof.
   destruct (exec_so_instr i st) eqn:Q; inversion H.
   subst l.
   destruct i.
-  + (* I_STOP *)
-    discriminate Q.
   + (* I_OP1 *)
     destruct st; inversion Q.
     reflexivity.
@@ -113,22 +104,6 @@ Proof.
     symmetry.
     assumption.
 Qed.
-
-Axiom word_to_pc : word -> nat.
-
-Definition exec_jump_instr (i : instruction) (pc : nat) (ws : list word) : option nat :=
-  match i with
-    | I_JUMP => match ws with
-                  | (to::xs) => Some (word_to_pc to)
-                  | _ => None
-                end
-    | I_JUMPI => match ws with
-                   | (to::cond::xs) => Some (if Word.eq cond Word.zero then (word_to_pc to) else pc + 1)
-                   | _ => None
-                end
-    | I_STACK_ONLY (I_PUSH _) => Some (pc + 1) (* depends on code address encoding *)
-    | _ => Some (pc + 1)
-  end.
 
 Definition SUB_BOUND := 1023.
 Definition BOUND := S SUB_BOUND.

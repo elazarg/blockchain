@@ -36,6 +36,18 @@ Definition exec_mem_instr (i : mem_instruction) (m : memory) (ws : list word) : 
     | _, _ => None
   end.
 
+Theorem exec_mem_nice : forall i m st m' st',
+  exec_mem_instr i m st = Some (m', st') ->
+    let d := delta (I_MEMINS i) in
+    let a := alpha (I_MEMINS i) in
+    st' = firstn a st' ++ skipn d st.
+Proof.
+  intros.
+  destruct (exec_mem_instr i m st) eqn:Q; inversion H.
+  subst.
+  destruct i; repeat (destruct st; inversion Q; try reflexivity).
+Qed.
+
 Definition storage := WordMap.t word.
 
 Definition storage_read (addr: word) (p: storage) : word := WordMap.get (Word.intval addr) p.
@@ -51,14 +63,14 @@ Definition exec_storage_instr (i : storage_instruction) (p : storage) (ws : list
     | _, _ => None
   end.
 
-Variable size : nat.
-
-Require Import Vector.
-Variable code : Vector.t instruction size.
-
-Record state := State {
-  stack : list word;
-  mem  : memory;
-  stor : storage;
-  pc : nat;
-}.
+Theorem exec_storage_nice : forall i p st p' st',
+  exec_storage_instr i p st = Some (p', st') ->
+    let d := delta (I_STORINS i) in
+    let a := alpha (I_STORINS i) in
+    st' = firstn a st' ++ skipn d st.
+Proof.
+  intros.
+  destruct (exec_storage_instr i p st) eqn:Q; inversion H.
+  subst.
+  destruct i; repeat (destruct st; inversion Q; try reflexivity).
+Qed.

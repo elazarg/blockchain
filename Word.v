@@ -28,19 +28,29 @@ Module Word.
   Definition exp (x y : int) : int :=
     repr (Z.pow (unsigned x) (unsigned y)).
 
-  Axiom least_byte : int -> int -> int.
-  Axiom sext : int -> int -> int.
+  Local Definition byte_at x i :=
+    Z.shiftr (intval x) (32 - i) mod 256.
+
+  Definition get_byte (left_index x : int) : int :=
+    repr (byte_at x (intval left_index)).
+
+  Definition sext (x y : int) : int :=
+    sign_ext (intval x) y.
 
   Definition shl8 (w : int) := shl w (repr 8).
 
-  Local Definition conc (w1 : int) (b : byte) :=  repr ((unsigned (shl8 w1)) + (Byte.unsigned b)).
+  Local Definition conc (w1 : int) (b : byte) :=
+    repr ((unsigned (shl8 w1)) + (Byte.unsigned b)).
 
   Local Notation "a @ b" := (conc a b) (at level 1).
 
-  Definition word_from_bytes (a1 a2 a3 a4 a5 a6 a7 a8 : byte) : int :=
-    zero @ a1 @ a2 @ a3 @ a4 @ a5 @ a6 @ a7 @ a8.
+  Definition word_from_bytes (b0 b1 b2 b3 b4 b5 b6 b7 : byte) : int :=
+    zero @ b0 @ b1 @ b2 @ b3 @ b4 @ b5 @ b6 @ b7.
 
-  Axiom bytes_from_word : int -> byte*byte*byte*byte*byte*byte*byte*byte.
+  Definition of_nat x := repr (Z.of_nat x).
+  Definition bytes_from_word (w : int) : byte*byte*byte*byte*byte*byte*byte*byte :=
+    let b := fun i => Byte.repr (byte_at w i) in
+    (b 0, b 1, b 2, b 3, b 4, b 5, b 6, b 7).
 End Word.
 
 Definition word := Word.int.
