@@ -7,29 +7,111 @@ Import ListNotations.
 
 (* Project modules *)
 Require Import ListUtils.
-Require Import Instructions.
-Require Import Word.
 
-Definition dup (n : nat) (ws : list word) : option (list word) :=
+Definition dup {T: Type} (n : nat) (ws : list T) : option (list T) :=
    match List.nth_error ws n with
      | Some v => Some (v::ws)
      | None => None
    end.
 
-Definition exec_so_instr (i : so_instruction) (st : list word) : option (list word) :=
-  match i, st with
-    | I_OP1 op, w::ws => Some (eval_op1 op w::ws)
-    | I_OP1 _, nil => None
-    | I_OP2 op, (w::w0::ws) => Some (eval_op2 op w w0::ws)
-    | I_OP2 _, _ => None
-    | I_OP3 op, (w::w0::w1::ws) => Some (eval_op3 op w w0 w1::ws)
-    | I_OP3 _, _ => None
-    | I_POP, (w::ws) => Some ws
-    | I_POP, _ => None
-    | I_PUSH item, ws  => Some (item::ws)
-    | I_DUP n _, ws => dup n ws
-    | I_SWAP n _, ws => swap n ws
+Definition apply_1 {T} (f: T -> T) xs :=
+  match xs with
+    | a::xs => Some (f a::xs)
+    | nil => None
   end.
+
+Definition apply_2 {T} (f: T -> T -> T) xs :=
+  match xs with
+    | a::b::xs => Some (f a b::xs)
+    | _ => None
+  end.
+
+Definition apply_3 {T} (f: T -> T -> T -> T) xs :=
+  match xs with
+    | a::b::c::xs => Some (f a b c::xs)
+    | _ => None
+  end.
+
+Section SWAP.
+
+Definition swap {T : Type} (n : nat) (ws : list T) : option (list T) :=
+   match skipn (1+n) ws, firstn (1+n) ws with
+     | w1 :: l1, w0 :: l0 => Some ((w1 :: l0) ++ w0 :: l1)
+     | _, _ => None
+   end.
+
+Variable (T : Type).
+
+Lemma swap_same_length : forall (w0 w1 : T) (l0 l1 : list T),
+  length ((w0 :: l0) ++ w1 :: l1) = length ((w1 :: l0) ++ w0 :: l1).
+Proof.
+  intros.
+  rewrite -> app_length.
+  rewrite -> app_length.
+  reflexivity.
+Qed.
+
+Lemma swap_eq : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws' ->
+  length ws = length ws'.
+Proof.
+  intros n ws ws'.
+  intros.
+  unfold swap in H.
+  destruct (skipn (1+n) ws) eqn:S. discriminate H.
+  destruct (firstn (1+n) ws) eqn:F. discriminate H.
+  rewrite <- (firstn_skipn (1+n) ws).
+  inversion H.
+  rewrite -> F, S.
+  rewrite -> app_comm_cons.
+  apply swap_same_length.
+Qed.
+
+Lemma swap_long : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws' ->
+  (1+n) < length ws.
+Proof.
+  intros. simpl.
+  unfold swap in H.
+  destruct (skipn (1 + n) ws) eqn:Q. inversion H.
+  destruct (firstn (1 + n) ws). inversion H.
+  apply skipn_head_lt in Q.
+  assumption.
+Qed.
+
+Lemma swap_skipn_length : forall (w0 w1 : T) (l0 l1 : list T),
+  swap (length l0) ((w0 :: l0) ++ w1 :: l1) = Some ((w1 :: l0) ++ w0 :: l1).
+Proof.
+  intros.
+  unfold swap.
+  assert (1 + length l0 = length (w0::l0)) by reflexivity.
+  rewrite -> H.
+  rewrite -> firstn_app, firstn_all, minus_diag.
+  rewrite -> skipn_app, app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma swap_correct : forall (n : nat) (ws ws' : list T),
+  swap n ws = Some ws'
+  -> exists w0 w1 l0 l1, ws = (w0::l0) ++ (w1::l1) /\ ws' = (w1::l0) ++ (w0::l1).
+Proof.
+  intros. unfold swap in H.
+  assert ( firstn (1 + n) ws ++ skipn (1 + n) ws = ws) by apply firstn_skipn.
+  destruct ws eqn:Q. inversion H.
+  simpl in *.
+  destruct (skipn n l).
+  - inversion H.
+  - inversion H0.
+    exists t, t0, (firstn n l), (skipn (1+n) l).
+    assert (FS: firstn n l ++ skipn n l = l) by apply firstn_skipn.
+    split; [idtac | inversion H];
+      do 3 f_equal;
+      rewrite <- FS in H2 at 2;
+      apply app_inv_head, skipn_succ in H2;
+      assumption.
+Qed.
+
+End SWAP.
 
 Lemma swap_alpha_2n_delta_2n : forall {T : Type} (n : nat) (ws ws' : list T),
   swap n ws = Some ws'
@@ -58,54 +140,3 @@ Proof.
   skip n (t :: l0 ++ [t0]) SKIP. rewrite -> skipn_short.
   reflexivity.
 Qed.
-
-Theorem exec_so_nice : forall i st st',
-  exec_so_instr i st = Some st' ->
-    let d := delta (I_STACK_ONLY i) in
-    let a := alpha (I_STACK_ONLY i) in
-    st' = firstn a st' ++ skipn d st.
-Proof.
-  intros.
-  destruct (exec_so_instr i st) eqn:Q; inversion H.
-  subst l.
-  destruct i.
-  + (* I_OP1 *)
-    destruct st; inversion Q.
-    reflexivity.
-  + (* I_OP2 *)
-    destruct st eqn:?. simplify_eq Q.
-    destruct l eqn:?. simplify_eq Q.
-    inversion Q.
-    reflexivity.
-  + (* I_OP3 *)
-    destruct st eqn:?. simplify_eq Q.
-    destruct l eqn:?. simplify_eq Q.
-    destruct l0; inversion Q.
-    reflexivity.
-  + (* I_POP *)
-    destruct st eqn:?; inversion Q.
-    reflexivity.
-  + (* I_PUSH *)
-    inversion Q.
-    reflexivity.
-  + (* I_DUP *)
-    subst a d.
-    unfold exec_so_instr in Q. unfold dup in Q.
-    destruct (nth_error st n) eqn:NE; inversion Q.
-    destruct st; auto.
-    simpl. f_equal. f_equal.
-    symmetry.
-    apply firstn_skipn.
-  + (* I_SWAP *)
-    subst a d.
-    apply swap_alpha_2n_delta_2n in Q.
-    rewrite <- (firstn_skipn (S (S n)) st') at 1.
-    f_equal.
-    symmetry.
-    assumption.
-Qed.
-
-Definition SUB_BOUND := 1023.
-Definition BOUND := S SUB_BOUND.
-Definition inbounds n : Prop := n < BOUND.
-Definition noflow (xs : list word) : Prop := inbounds (length xs).

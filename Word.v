@@ -39,13 +39,16 @@ Module Word.
 
   Definition shl8 (w : int) := shl w (repr 8).
 
-  Local Definition conc (w1 : int) (b : byte) :=
+  Local Definition conc (b : byte) (w1 : int) : int :=
     repr ((unsigned (shl8 w1)) + (Byte.unsigned b)).
 
-  Local Notation "a @ b" := (conc a b) (at level 1).
+  Local Notation "b @ a" := (conc a b) (at level 100).
 
   Definition word_from_bytes (b0 b1 b2 b3 b4 b5 b6 b7 : byte) : int :=
     zero @ b0 @ b1 @ b2 @ b3 @ b4 @ b5 @ b6 @ b7.
+
+  Fixpoint word_from_byte_seq (bs : list byte) : int :=
+    fold_right conc zero bs.
 
   Definition of_nat x := repr (Z.of_nat x).
   Definition bytes_from_word (w : int) : byte*byte*byte*byte*byte*byte*byte*byte :=
@@ -54,5 +57,20 @@ Module Word.
 End Word.
 
 Definition word := Word.int.
-
 Export Word.
+
+Module Wordsize_160.
+  Definition wordsize := 160%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_160.
+Strategy opaque [Wordsize_256.wordsize].
+
+Module Int160.
+Include Make(Wordsize_256).
+End Int160.
+
+
+Module Address.
+  Include Int160.
+End Address.
